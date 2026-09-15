@@ -411,10 +411,9 @@ function renderNavPills(active){
       <button class="chip nav-pill ${active==='catatan'?'active':''}" data-nav="catatan" style="display:flex; align-items:center; gap:6px; padding:8px 14px; white-space:nowrap;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Catatan
       </button>
-      ${(state.profile && isBendahara()) ? `
       <button class="chip nav-pill ${active==='iuran'?'active':''}" data-nav="iuran" style="display:flex; align-items:center; gap:6px; padding:8px 14px; white-space:nowrap;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5c0-1.4 1.2-2.5 2.5-2.5s2.5.8 2.5 2c0 2-5 1.5-5 4 0 1.2 1.1 2 2.5 2s2.5-1.1 2.5-2.5"/></svg> Iuran
-      </button>` : ''}
+      </button>
     </div>
   `;
 }
@@ -1080,7 +1079,7 @@ function openCatatanSheet(c){
 
 /* ================== HALAMAN: IURAN ================== */
 async function renderIuran(){
-  if(!isBendahara()){ toast('Hanya ketua/bendahara yang bisa mengakses ini.'); renderDashboard(); return; }
+  const bisaEdit = isBendahara();
   const app = document.getElementById('app');
   const [jenisRes, bayarRes, bankRes] = await Promise.all([
     sb.from('iuran_jenis').select('*').order('created_at'),
@@ -1105,7 +1104,7 @@ async function renderIuran(){
   const bankHtml = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
       <p style="font-size:14px; font-weight:600; margin:0;">Rekening Bank</p>
-      <button class="link-btn" id="btn-add-bank">+ Tambah</button>
+      ${bisaEdit ? `<button class="link-btn" id="btn-add-bank">+ Tambah</button>` : ''}
     </div>
     ${state.rekeningBank.length===0 ? `<p class="hint" style="text-align:left; margin-bottom:16px;">Belum ada rekening ditambahkan.</p>` : state.rekeningBank.map(b=>`
       <div class="card">
@@ -1114,7 +1113,7 @@ async function renderIuran(){
         <p style="font-size:12.5px; color:var(--ink); margin:0 0 10px;">a.n. ${b.atas_nama}</p>
         <div style="display:flex; gap:8px;">
           <button class="btn btn-ghost btn-sm copy-rek" data-nomor="${b.nomor_rekening}" style="flex:1;">Salin nomor</button>
-          <button class="btn btn-ghost btn-sm del-rek" data-id="${b.id}" style="color:var(--danger); border-color:#EAB2B6;">Hapus</button>
+          ${bisaEdit ? `<button class="btn btn-ghost btn-sm del-rek" data-id="${b.id}" style="color:var(--danger); border-color:#EAB2B6;">Hapus</button>` : ''}
         </div>
       </div>
     `).join('')}
@@ -1126,8 +1125,7 @@ async function renderIuran(){
     <div style="display:flex; justify-content:space-between; align-items:center; margin:20px 0 10px;">
       <p style="font-size:14px; font-weight:600; margin:0;">Jenis Iuran</p>
       <div style="display:flex; gap:12px;">
-        <button class="link-btn" id="btn-export-iuran">Export Excel</button>
-        <button class="link-btn" id="btn-add-jenis">+ Tambah</button>
+        ${bisaEdit ? `<button class="link-btn" id="btn-export-iuran">Export Excel</button><button class="link-btn" id="btn-add-jenis">+ Tambah</button>` : ''}
       </div>
     </div>
     ${state.iuranJenis.length===0 ? `<p class="hint" style="text-align:left;">Belum ada jenis iuran.</p>` : state.iuranJenis.map(j=>{
@@ -1143,13 +1141,13 @@ async function renderIuran(){
             <p class="title" style="margin:0 0 2px;">${j.nama}</p>
             <p class="mk">${j.frekuensi}${j.nominal ? ' · Rp' + Number(j.nominal).toLocaleString('id-ID') + '/orang' : ''}</p>
           </div>
-          <button class="link-btn del-jenis" data-id="${j.id}" style="color:var(--danger);">Hapus</button>
+          ${bisaEdit ? `<button class="link-btn del-jenis" data-id="${j.id}" style="color:var(--danger);">Hapus</button>` : ''}
         </div>
         <div class="progress-bar" style="margin-top:12px;"><div style="width:${pct}%;"></div></div>
         <p style="font-size:12.5px; color:var(--muted); margin:6px 0 2px;">${lunas} dari ${totalMahasiswa} mahasiswa sudah lunas (${pct}%)</p>
         <p style="font-size:13px; font-weight:600; margin:0 0 10px;">Terkumpul: Rp${terkumpul.toLocaleString('id-ID')}${target ? ' / Rp' + target.toLocaleString('id-ID') : ''}</p>
         <div style="display:flex; gap:8px;">
-          <button class="btn btn-ghost btn-sm lihat-detail-iuran" data-id="${j.id}" style="flex:1;">Lihat & catat</button>
+          <button class="btn btn-ghost btn-sm lihat-detail-iuran" data-id="${j.id}" style="flex:1;">${bisaEdit ? 'Lihat & catat' : 'Lihat status'}</button>
           <button class="btn btn-ghost btn-sm rekap-wa" data-id="${j.id}" style="flex:1;">Salin rekap WA</button>
         </div>
       </div>
@@ -1158,9 +1156,11 @@ async function renderIuran(){
 
   c.innerHTML = bankHtml + jenisHtml;
 
-  document.getElementById('btn-add-bank').onclick = openTambahBankSheet;
-  document.getElementById('btn-add-jenis').onclick = openTambahJenisIuranSheet;
-  document.getElementById('btn-export-iuran').onclick = exportIuranExcel;
+  if(bisaEdit){
+    document.getElementById('btn-add-bank').onclick = openTambahBankSheet;
+    document.getElementById('btn-add-jenis').onclick = openTambahJenisIuranSheet;
+    document.getElementById('btn-export-iuran').onclick = exportIuranExcel;
+  }
   document.querySelectorAll('.rekap-wa').forEach(btn=>{
     btn.onclick = ()=> salinRekapBelumBayar(btn.dataset.id);
   });
@@ -1289,17 +1289,19 @@ function exportIuranExcel(){
 function openDetailIuranSheet(jenisId){
   const jenis = state.iuranJenis.find(j=>j.id===jenisId);
   if(!jenis) return;
+  const bisaEdit = isBendahara();
   const overlay = document.createElement('div');
   overlay.className = 'sheet-overlay';
   const rows = state.profiles.filter(p=>p.nim).map(p=>{
     const bayar = state.iuranPembayaran.find(b=>b.iuran_jenis_id===jenisId && b.profile_id===p.id);
+    const sudahLunas = bayar && bayar.status==='lunas';
     return `
       <div class="topic-row">
-        <div class="l"><span class="status-dot ${bayar && bayar.status==='lunas' ? 'sd-selesai' : 'sd-belum'}"></span>
+        <div class="l"><span class="status-dot ${sudahLunas ? 'sd-selesai' : 'sd-belum'}"></span>
         <div><b style="font-size:12.5px;">${p.nama}</b></div></div>
-        <button class="btn btn-ghost btn-sm toggle-lunas" data-pid="${p.id}" data-status="${bayar ? bayar.status : 'belum'}" style="padding:5px 10px; font-size:11.5px;">
-          ${bayar && bayar.status==='lunas' ? 'Lunas ✓' : 'Tandai lunas'}
-        </button>
+        ${bisaEdit ? `<button class="btn btn-ghost btn-sm toggle-lunas" data-pid="${p.id}" data-status="${bayar ? bayar.status : 'belum'}" style="padding:5px 10px; font-size:11.5px;">
+          ${sudahLunas ? 'Lunas ✓' : 'Tandai lunas'}
+        </button>` : `<span style="font-size:11.5px; color:${sudahLunas ? 'var(--green-600)' : 'var(--muted)'}; font-weight:600;">${sudahLunas ? 'Lunas' : 'Belum'}</span>`}
       </div>
     `;
   }).join('');
