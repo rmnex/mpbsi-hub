@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#0F6E56" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%230F6E56%22/><text x=%2250%22 y=%2265%22 font-size=%2255%22 fill=%22white%22 text-anchor=%22middle%22 font-family=%22Arial%22>M</text></svg>" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --green-50:#E1F5EE; --green-100:#9FE1CB; --green-400:#1D9E75; --green-600:#0F6E56; --green-800:#085041; --green-900:#04342C;
@@ -72,6 +73,9 @@
   .topbar .name{font-size:14px; font-weight:600; margin:0;}
   .topbar .role{font-size:11px; color:var(--muted); margin:0; text-transform:capitalize;}
   .icon-btn{width:36px; height:36px; border-radius:50%; border:1px solid var(--line); background:#fff; display:flex; align-items:center; justify-content:center; font-size:16px;}
+  .icon-btn svg{width:18px; height:18px;}
+  .icon-btn-settings{background:#EEEDFE; border-color:#EEEDFE; color:#534AB7;}
+  .icon-btn-logout{background:#FCEBEB; border-color:#FCEBEB; color:#A32D2D;}
 
   .content{padding:4px 20px 90px; flex:1;}
 
@@ -167,6 +171,11 @@ let state = {
   filter: 'Semua',
   logoUrl: null,
   guestMode: false,
+  reminderDays: [3,1],
+  catatan: [],
+  iuranJenis: [],
+  iuranPembayaran: [],
+  rekeningBank: [],
 };
 
 const KATEGORI = ['Individu', 'Kelompok'];
@@ -226,6 +235,9 @@ function deadlineStatus(deadline, selesai){
 }
 function isPengurus(){
   return state.profile && ['ketua','sekretaris'].includes(state.profile.role);
+}
+function isBendahara(){
+  return state.profile && ['ketua','bendahara'].includes(state.profile.role);
 }
 function toast(msg){
   const el = document.createElement('div');
@@ -337,12 +349,47 @@ function mkName(id){ const m = state.mataKuliah.find(m=>m.id===id); return m ? m
 function mkDosen(id){ const m = state.mataKuliah.find(m=>m.id===id); return m ? m.dosen : ''; }
 
 /* ================== NOTIFIKASI ================== */
-function requestNotifPermission(){
+const VAPID_PUBLIC_KEY = "BBx1q5X16JU3ioBxwn-Se1GvKjBrQ753ecYfBokLuhEpcj2TG6XYhCnyyqM22LlJn5c6qeTSjM8P9-alnjyrCz0";
+
+function urlBase64ToUint8Array(base64String){
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+async function requestNotifPermission(){
   if('Notification' in window && Notification.permission === 'default'){
-    Notification.requestPermission();
+    await Notification.requestPermission();
   }
   checkReminders();
+  await subscribePush();
 }
+
+async function subscribePush(){
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if(Notification.permission !== 'granted') return;
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub){
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const raw = sub.toJSON();
+    await sb.from('push_subscriptions').upsert({
+      profile_id: state.profile ? state.profile.id : null,
+      endpoint: raw.endpoint,
+      p256dh: raw.keys.p256dh,
+      auth: raw.keys.auth,
+    }, { onConflict: 'endpoint' });
+  } catch(e){
+    console.log('Gagal subscribe push:', e);
+  }
+}
+
 function checkReminders(){
   if(!('Notification' in window) || Notification.permission !== 'granted') return;
   const now = new Date();
@@ -354,20 +401,43 @@ function checkReminders(){
   });
 }
 
-/* ================== DASHBOARD ================== */
-function renderDashboard(){
-  const app = document.getElementById('app');
-  const filtered = state.filter === 'Semua' ? state.tugas : state.tugas.filter(t=>t.kategori===state.filter);
+/* ================== NAVIGASI ANTAR HALAMAN ================== */
+function renderNavPills(active){
+  return `
+    <div style="display:flex; gap:8px; padding:0 20px 12px; overflow-x:auto;">
+      <button class="chip nav-pill ${active==='tugas'?'active':''}" data-nav="tugas" style="display:flex; align-items:center; gap:6px; padding:8px 14px; white-space:nowrap;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Tugas
+      </button>
+      <button class="chip nav-pill ${active==='catatan'?'active':''}" data-nav="catatan" style="display:flex; align-items:center; gap:6px; padding:8px 14px; white-space:nowrap;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Catatan
+      </button>
+      ${(state.profile && isBendahara()) ? `
+      <button class="chip nav-pill ${active==='iuran'?'active':''}" data-nav="iuran" style="display:flex; align-items:center; gap:6px; padding:8px 14px; white-space:nowrap;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5c0-1.4 1.2-2.5 2.5-2.5s2.5.8 2.5 2c0 2-5 1.5-5 4 0 1.2 1.1 2 2.5 2s2.5-1.1 2.5-2.5"/></svg> Iuran
+      </button>` : ''}
+    </div>
+  `;
+}
+function bindNavPills(){
+  document.querySelectorAll('.nav-pill').forEach(btn=>{
+    btn.onclick = ()=>{
+      const nav = btn.dataset.nav;
+      if(nav==='tugas') renderDashboard();
+      if(nav==='catatan') renderCatatan();
+      if(nav==='iuran') renderIuran();
+    };
+  });
+}
+function renderTopbar(){
   const p = state.profile;
-
-  const topbarHtml = p ? `
+  return p ? `
       <div class="who">
         <div class="avatar" style="background:${colorFor(p.id)}22; color:${colorFor(p.id)};">${initials(p.nama)}</div>
         <div><p class="name">${p.nama}</p><p class="role">${p.role}</p></div>
       </div>
       <div style="display:flex; gap:8px;">
-        ${isPengurus() ? `<button class="icon-btn" id="btn-settings">&#9881;</button>` : ''}
-        <button class="icon-btn" id="btn-logout">&#8594;</button>
+        ${isPengurus() ? `<button class="icon-btn icon-btn-settings" id="btn-settings" title="Pengaturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>` : ''}
+        <button class="icon-btn icon-btn-logout" id="btn-logout" title="Keluar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></button>
       </div>
   ` : `
       <div class="who">
@@ -376,24 +446,39 @@ function renderDashboard(){
       </div>
       <button class="btn btn-primary btn-sm" id="btn-login-from-guest">Masuk</button>
   `;
+}
+function bindTopbarButtons(){
+  const p = state.profile;
+  if(p){
+    document.getElementById('btn-logout').onclick = ()=>{ state.profile=null; state.guestMode=false; renderLanding(); };
+    const settingsBtn = document.getElementById('btn-settings');
+    if(settingsBtn) settingsBtn.onclick = openSettingsSheet;
+  } else {
+    document.getElementById('btn-login-from-guest').onclick = ()=>{ state.guestMode=false; renderLanding(); };
+  }
+}
+
+/* ================== DASHBOARD ================== */
+function renderDashboard(){
+  const app = document.getElementById('app');
+  const filtered = state.filter === 'Semua' ? state.tugas : state.tugas.filter(t=>t.kategori===state.filter);
+  const p = state.profile;
 
   app.innerHTML = `
     <div class="topbar">
-      ${topbarHtml}
+      ${renderTopbar()}
     </div>
+    ${renderNavPills('tugas')}
     <div class="content">
       <div class="chips" id="chips"></div>
       <div id="task-list"></div>
     </div>
     ${!state.guestMode ? `<button class="fab-btn" id="fab-add">+</button>` : ''}
   `;
+  bindNavPills();
+  bindTopbarButtons();
   if(p){
-    document.getElementById('btn-logout').onclick = ()=>{ state.profile=null; state.guestMode=false; renderLanding(); };
     document.getElementById('fab-add').onclick = openAddTaskSheet;
-    const settingsBtn = document.getElementById('btn-settings');
-    if(settingsBtn) settingsBtn.onclick = openSettingsSheet;
-  } else {
-    document.getElementById('btn-login-from-guest').onclick = ()=>{ state.guestMode=false; renderLanding(); };
   }
 
   const chipsEl = document.getElementById('chips');
@@ -816,11 +901,30 @@ function openSettingsSheet(){
       </div>
       <p id="s-err" class="err-msg hidden"></p>
       <button class="btn btn-primary" id="s-upload">Simpan logo</button>
-      <button class="btn btn-ghost" id="s-close" style="margin-top:8px;">Tutup</button>
+
+      <p style="font-size:13px; font-weight:600; margin:20px 0 8px; border-top:1px solid var(--line); padding-top:16px;">Frekuensi pengingat deadline</p>
+      <p class="hint" style="text-align:left; margin:0 0 10px;">Pilih berapa hari sebelum deadline anggota diingatkan lewat notifikasi.</p>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;">
+        ${[7,3,1,0].map(d=>`
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:6px 12px;">
+            <input type="checkbox" class="s-reminder-day" value="${d}" ${state.reminderDays?.includes(d)?'checked':''} style="width:auto;" /> H-${d===0?'0 (hari-H)':d}
+          </label>
+        `).join('')}
+      </div>
+      <button class="btn btn-ghost" id="s-save-reminder">Simpan frekuensi</button>
+
+      <button class="btn btn-ghost" id="s-close" style="margin-top:16px;">Tutup</button>
     </div>
   `;
   document.body.appendChild(overlay);
   document.getElementById('s-close').onclick = ()=> overlay.remove();
+  document.getElementById('s-save-reminder').onclick = async ()=>{
+    const days = [...document.querySelectorAll('.s-reminder-day:checked')].map(c=>c.value).join(',');
+    const { error } = await sb.from('pengaturan').update({ reminder_days: days || '3,1', updated_by: state.profile.id }).eq('id', 1);
+    if(error){ toast('Gagal simpan: ' + error.message); return; }
+    state.reminderDays = days.split(',').map(Number);
+    toast('Frekuensi pengingat disimpan.');
+  };
   document.getElementById('s-upload').onclick = async ()=>{
     const fileInput = document.getElementById('s-logo-file');
     const file = fileInput.files[0];
@@ -842,10 +946,401 @@ function openSettingsSheet(){
 }
 
 /* ================== INIT ================== */
-async function loadLogo(){
+/* ================== HALAMAN: CATATAN ================== */
+const KATEGORI_CATATAN = ['Pengumuman','Info Dosen','Umum','Lainnya'];
+const kategoriCatatanMeta = {
+  'Pengumuman': { bg:'#FCEBEB', text:'#791F1F' },
+  'Info Dosen': { bg:'#E6F1FB', text:'#0C447C' },
+  'Umum':       { bg:'#E1F5EE', text:'#085041' },
+  'Lainnya':    { bg:'#F1EFE8', text:'#444441' },
+};
+
+async function renderCatatan(){
+  const app = document.getElementById('app');
+  const { data } = await sb.from('catatan').select('*').order('dipin', { ascending: false }).order('created_at', { ascending: false });
+  state.catatan = data || [];
+  if(!state.catatanFilter) state.catatanFilter = 'Semua';
+
+  app.innerHTML = `
+    <div class="topbar">${renderTopbar()}</div>
+    ${renderNavPills('catatan')}
+    <div class="content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div style="display:flex; gap:8px; overflow-x:auto;">
+          ${['Semua', ...KATEGORI_CATATAN].map(k=>`<button class="chip cat-filter ${state.catatanFilter===k?'active':''}" data-k="${k}" style="white-space:nowrap; padding:7px 13px;">${k}</button>`).join('')}
+        </div>
+      </div>
+      <div style="text-align:right; margin-bottom:10px;"><button class="link-btn" id="btn-export-catatan">Export Excel</button></div>
+      <div id="catatan-list"></div>
+    </div>
+    ${(!state.guestMode && state.profile) ? `<button class="fab-btn" id="fab-add-catatan">+</button>` : ''}
+  `;
+  bindNavPills();
+  bindTopbarButtons();
+  document.querySelectorAll('.cat-filter').forEach(btn=>{
+    btn.onclick = ()=>{ state.catatanFilter = btn.dataset.k; renderCatatan(); };
+  });
+  document.getElementById('btn-export-catatan').onclick = exportCatatanExcel;
+  const addBtn = document.getElementById('fab-add-catatan');
+  if(addBtn) addBtn.onclick = ()=>openCatatanSheet(null);
+
+  const listEl = document.getElementById('catatan-list');
+  const filtered = state.catatanFilter === 'Semua' ? state.catatan : state.catatan.filter(c=>(c.kategori||'Umum')===state.catatanFilter);
+  if(filtered.length === 0){
+    listEl.innerHTML = `<div class="empty"><div class="ic">&#128221;</div><h3>Belum ada catatan</h3><p>Tekan tombol + untuk menambahkan catatan pertama.</p></div>`;
+    return;
+  }
+  filtered.forEach(c=>{
+    const bisaEdit = state.profile && (state.profile.id === c.dicatat_oleh || isPengurus());
+    const km = kategoriCatatanMeta[c.kategori || 'Umum'];
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <span class="badge" style="background:${km.bg}; color:${km.text};">${c.kategori || 'Umum'}</span>
+      ${c.dipin ? `<span class="badge" style="background:var(--warn-bg); color:var(--warn); margin-left:5px;">DISEMATKAN</span>` : ''}
+      <p class="title" style="margin-top:8px;">${c.judul}</p>
+      <p style="font-size:13px; color:var(--ink); line-height:1.5; white-space:pre-wrap;">${c.isi || ''}</p>
+      <div class="row-bottom">
+        <span class="who-tag">${profileName(c.dicatat_oleh)} · ${fmtDate(c.created_at)}</span>
+        ${bisaEdit ? `<button class="link-btn" data-id="${c.id}">Edit</button>` : ''}
+      </div>
+    `;
+    if(bisaEdit) card.querySelector('.link-btn').onclick = (e)=>{ e.stopPropagation(); openCatatanSheet(c); };
+    listEl.appendChild(card);
+  });
+}
+
+function exportCatatanExcel(){
+  if(typeof XLSX === 'undefined'){ toast('Gagal memuat modul export.'); return; }
+  const rows = state.catatan.map(c=>({
+    Kategori: c.kategori || 'Umum',
+    Judul: c.judul,
+    Isi: c.isi || '',
+    'Dicatat oleh': profileName(c.dicatat_oleh),
+    Tanggal: fmtDate(c.created_at),
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Catatan');
+  XLSX.writeFile(wb, 'Catatan-MPBSI-Hub.xlsx');
+}
+
+function openCatatanSheet(c){
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>${c ? 'Edit catatan' : 'Catatan baru'}</h3>
+      <div class="field"><label>Judul</label><input id="c-judul" type="text" value="${c ? (c.judul||'').replace(/"/g,'&quot;') : ''}" placeholder="Misal: Info kelas minggu depan" /></div>
+      <div class="field"><label>Kategori</label>
+        <select id="c-kategori">${KATEGORI_CATATAN.map(k=>`<option value="${k}" ${c && c.kategori===k ? 'selected':''}>${k}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Isi</label><textarea id="c-isi" rows="5" placeholder="Tulis catatan di sini...">${c ? (c.isi||'') : ''}</textarea></div>
+      ${isPengurus() ? `
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:16px;">
+        <input type="checkbox" id="c-pin" ${c && c.dipin ? 'checked':''} style="width:auto;" /> Sematkan di atas (penting)
+      </label>` : ''}
+      <button class="btn btn-primary" id="c-save">Simpan</button>
+      ${c ? `<button class="btn btn-ghost" id="c-delete" style="margin-top:8px; color:var(--danger); border-color:#EAB2B6;">Hapus catatan</button>` : ''}
+      <button class="btn btn-ghost" id="c-cancel" style="margin-top:8px;">Batal</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('c-cancel').onclick = ()=> overlay.remove();
+  document.getElementById('c-save').onclick = async ()=>{
+    const judul = document.getElementById('c-judul').value.trim();
+    if(!judul){ toast('Judul tidak boleh kosong.'); return; }
+    const payload = {
+      judul, isi: document.getElementById('c-isi').value.trim(),
+      kategori: document.getElementById('c-kategori').value,
+      dipin: document.getElementById('c-pin') ? document.getElementById('c-pin').checked : (c ? c.dipin : false),
+    };
+    let error;
+    if(c){
+      payload.updated_at = new Date().toISOString();
+      ({ error } = await sb.from('catatan').update(payload).eq('id', c.id));
+    } else {
+      payload.dicatat_oleh = state.profile.id;
+      ({ error } = await sb.from('catatan').insert(payload));
+    }
+    if(error){ toast('Gagal simpan: ' + error.message); return; }
+    overlay.remove();
+    renderCatatan();
+    toast('Catatan disimpan.');
+  };
+  const delBtn = document.getElementById('c-delete');
+  if(delBtn) delBtn.onclick = async ()=>{
+    if(!confirm('Yakin hapus catatan ini?')) return;
+    await sb.from('catatan').delete().eq('id', c.id);
+    overlay.remove();
+    renderCatatan();
+  };
+}
+
+/* ================== HALAMAN: IURAN ================== */
+async function renderIuran(){
+  if(!isBendahara()){ toast('Hanya ketua/bendahara yang bisa mengakses ini.'); renderDashboard(); return; }
+  const app = document.getElementById('app');
+  const [jenisRes, bayarRes, bankRes] = await Promise.all([
+    sb.from('iuran_jenis').select('*').order('created_at'),
+    sb.from('iuran_pembayaran').select('*'),
+    sb.from('rekening_bank').select('*').order('created_at'),
+  ]);
+  state.iuranJenis = jenisRes.data || [];
+  state.iuranPembayaran = bayarRes.data || [];
+  state.rekeningBank = bankRes.data || [];
+
+  app.innerHTML = `
+    <div class="topbar">${renderTopbar()}</div>
+    ${renderNavPills('iuran')}
+    <div class="content" id="iuran-content"></div>
+  `;
+  bindNavPills();
+  bindTopbarButtons();
+
+  const c = document.getElementById('iuran-content');
+
+  // Rekening bank
+  const bankHtml = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <p style="font-size:14px; font-weight:600; margin:0;">Rekening Bank</p>
+      <button class="link-btn" id="btn-add-bank">+ Tambah</button>
+    </div>
+    ${state.rekeningBank.length===0 ? `<p class="hint" style="text-align:left; margin-bottom:16px;">Belum ada rekening ditambahkan.</p>` : state.rekeningBank.map(b=>`
+      <div class="card">
+        <p style="font-size:12.5px; color:var(--muted); margin:0;">${b.nama_bank}</p>
+        <p style="font-size:16px; font-weight:700; margin:2px 0; letter-spacing:0.02em;">${b.nomor_rekening}</p>
+        <p style="font-size:12.5px; color:var(--ink); margin:0 0 10px;">a.n. ${b.atas_nama}</p>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost btn-sm copy-rek" data-nomor="${b.nomor_rekening}" style="flex:1;">Salin nomor</button>
+          <button class="btn btn-ghost btn-sm del-rek" data-id="${b.id}" style="color:var(--danger); border-color:#EAB2B6;">Hapus</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+
+  // Jenis iuran + ringkasan pembayaran
+  const totalMahasiswa = state.profiles.filter(p=>p.nim).length || 14;
+  const jenisHtml = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:20px 0 10px;">
+      <p style="font-size:14px; font-weight:600; margin:0;">Jenis Iuran</p>
+      <div style="display:flex; gap:12px;">
+        <button class="link-btn" id="btn-export-iuran">Export Excel</button>
+        <button class="link-btn" id="btn-add-jenis">+ Tambah</button>
+      </div>
+    </div>
+    ${state.iuranJenis.length===0 ? `<p class="hint" style="text-align:left;">Belum ada jenis iuran.</p>` : state.iuranJenis.map(j=>{
+      const bayarJenis = state.iuranPembayaran.filter(b=>b.iuran_jenis_id===j.id);
+      const lunas = bayarJenis.filter(b=>b.status==='lunas').length;
+      const pct = totalMahasiswa ? Math.round(lunas/totalMahasiswa*100) : 0;
+      const terkumpul = bayarJenis.filter(b=>b.status==='lunas').reduce((s,b)=>s+Number(b.jumlah||0),0);
+      const target = j.nominal ? Number(j.nominal) * totalMahasiswa : null;
+      return `
+      <div class="card" data-jenis-id="${j.id}">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div>
+            <p class="title" style="margin:0 0 2px;">${j.nama}</p>
+            <p class="mk">${j.frekuensi}${j.nominal ? ' · Rp' + Number(j.nominal).toLocaleString('id-ID') + '/orang' : ''}</p>
+          </div>
+          <button class="link-btn del-jenis" data-id="${j.id}" style="color:var(--danger);">Hapus</button>
+        </div>
+        <div class="progress-bar" style="margin-top:12px;"><div style="width:${pct}%;"></div></div>
+        <p style="font-size:12.5px; color:var(--muted); margin:6px 0 2px;">${lunas} dari ${totalMahasiswa} mahasiswa sudah lunas (${pct}%)</p>
+        <p style="font-size:13px; font-weight:600; margin:0 0 10px;">Terkumpul: Rp${terkumpul.toLocaleString('id-ID')}${target ? ' / Rp' + target.toLocaleString('id-ID') : ''}</p>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost btn-sm lihat-detail-iuran" data-id="${j.id}" style="flex:1;">Lihat & catat</button>
+          <button class="btn btn-ghost btn-sm rekap-wa" data-id="${j.id}" style="flex:1;">Salin rekap WA</button>
+        </div>
+      </div>
+    `;}).join('')}
+  `;
+
+  c.innerHTML = bankHtml + jenisHtml;
+
+  document.getElementById('btn-add-bank').onclick = openTambahBankSheet;
+  document.getElementById('btn-add-jenis').onclick = openTambahJenisIuranSheet;
+  document.getElementById('btn-export-iuran').onclick = exportIuranExcel;
+  document.querySelectorAll('.rekap-wa').forEach(btn=>{
+    btn.onclick = ()=> salinRekapBelumBayar(btn.dataset.id);
+  });
+  document.querySelectorAll('.copy-rek').forEach(btn=>{
+    btn.onclick = ()=>{
+      navigator.clipboard.writeText(btn.dataset.nomor).then(()=>toast('Nomor rekening disalin.'));
+    };
+  });
+  document.querySelectorAll('.del-rek').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if(!confirm('Hapus rekening ini?')) return;
+      await sb.from('rekening_bank').delete().eq('id', btn.dataset.id);
+      renderIuran();
+    };
+  });
+  document.querySelectorAll('.del-jenis').forEach(btn=>{
+    btn.onclick = async (e)=>{
+      e.stopPropagation();
+      if(!confirm('Hapus jenis iuran ini beserta seluruh catatan pembayarannya?')) return;
+      await sb.from('iuran_jenis').delete().eq('id', btn.dataset.id);
+      renderIuran();
+    };
+  });
+  document.querySelectorAll('.lihat-detail-iuran').forEach(btn=>{
+    btn.onclick = ()=> openDetailIuranSheet(btn.dataset.id);
+  });
+}
+
+function openTambahBankSheet(){
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Tambah rekening bank</h3>
+      <div class="field"><label>Nama bank</label><input id="rb-bank" type="text" placeholder="Misal: BCA, Mandiri, BRI" /></div>
+      <div class="field"><label>Nomor rekening</label><input id="rb-nomor" type="text" placeholder="1234567890" /></div>
+      <div class="field"><label>Atas nama</label><input id="rb-nama" type="text" placeholder="Nama pemilik rekening" /></div>
+      <button class="btn btn-primary" id="rb-save">Simpan</button>
+      <button class="btn btn-ghost" id="rb-cancel" style="margin-top:8px;">Batal</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('rb-cancel').onclick = ()=> overlay.remove();
+  document.getElementById('rb-save').onclick = async ()=>{
+    const nama_bank = document.getElementById('rb-bank').value.trim();
+    const nomor_rekening = document.getElementById('rb-nomor').value.trim();
+    const atas_nama = document.getElementById('rb-nama').value.trim();
+    if(!nama_bank || !nomor_rekening || !atas_nama){ toast('Lengkapi semua kolom.'); return; }
+    const { error } = await sb.from('rekening_bank').insert({ nama_bank, nomor_rekening, atas_nama });
+    if(error){ toast('Gagal simpan: ' + error.message); return; }
+    overlay.remove();
+    renderIuran();
+  };
+}
+
+function openTambahJenisIuranSheet(){
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Tambah jenis iuran</h3>
+      <div class="field"><label>Nama iuran</label><input id="ij-nama" type="text" placeholder="Misal: Kas Bulanan, Iuran Wisuda" /></div>
+      <div class="field"><label>Frekuensi</label>
+        <select id="ij-frekuensi">
+          <option>Bulanan</option><option>Mingguan</option><option>Tahunan</option><option>Sekali</option>
+        </select>
+      </div>
+      <div class="field"><label>Nominal per orang (Rp, opsional)</label><input id="ij-nominal" type="number" placeholder="20000" /></div>
+      <button class="btn btn-primary" id="ij-save">Simpan</button>
+      <button class="btn btn-ghost" id="ij-cancel" style="margin-top:8px;">Batal</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('ij-cancel').onclick = ()=> overlay.remove();
+  document.getElementById('ij-save').onclick = async ()=>{
+    const nama = document.getElementById('ij-nama').value.trim();
+    if(!nama){ toast('Nama iuran wajib diisi.'); return; }
+    const nominalVal = document.getElementById('ij-nominal').value;
+    const { error } = await sb.from('iuran_jenis').insert({
+      nama, frekuensi: document.getElementById('ij-frekuensi').value,
+      nominal: nominalVal ? Number(nominalVal) : null,
+    });
+    if(error){ toast('Gagal simpan: ' + error.message); return; }
+    overlay.remove();
+    renderIuran();
+  };
+}
+
+function salinRekapBelumBayar(jenisId){
+  const jenis = state.iuranJenis.find(j=>j.id===jenisId);
+  if(!jenis) return;
+  const belumBayar = state.profiles.filter(p=>{
+    if(!p.nim) return false;
+    const bayar = state.iuranPembayaran.find(b=>b.iuran_jenis_id===jenisId && b.profile_id===p.id);
+    return !bayar || bayar.status !== 'lunas';
+  });
+  let teks = `*Rekap ${jenis.nama}*\n${jenis.frekuensi}${jenis.nominal ? ' - Rp' + Number(jenis.nominal).toLocaleString('id-ID') + '/orang' : ''}\n\n`;
+  if(belumBayar.length === 0){
+    teks += 'Semua sudah lunas! 🎉';
+  } else {
+    teks += `*Belum bayar (${belumBayar.length} orang):*\n`;
+    belumBayar.forEach((p,i)=>{ teks += `${i+1}. ${p.nama}\n`; });
+  }
+  navigator.clipboard.writeText(teks).then(()=>toast('Rekap disalin, tempel ke WhatsApp.'));
+}
+
+function exportIuranExcel(){
+  if(typeof XLSX === 'undefined'){ toast('Gagal memuat modul export.'); return; }
+  const mahasiswa = state.profiles.filter(p=>p.nim).sort((a,b)=>a.nim.localeCompare(b.nim));
+  const rows = mahasiswa.map(p=>{
+    const row = { Nama: p.nama, NIM: p.nim };
+    state.iuranJenis.forEach(j=>{
+      const bayar = state.iuranPembayaran.find(b=>b.iuran_jenis_id===j.id && b.profile_id===p.id);
+      row[j.nama] = bayar && bayar.status==='lunas' ? 'Lunas' : 'Belum';
+    });
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Rekap Iuran');
+  XLSX.writeFile(wb, 'Rekap-Iuran-MPBSI-Hub.xlsx');
+}
+
+function openDetailIuranSheet(jenisId){
+  const jenis = state.iuranJenis.find(j=>j.id===jenisId);
+  if(!jenis) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  const rows = state.profiles.filter(p=>p.nim).map(p=>{
+    const bayar = state.iuranPembayaran.find(b=>b.iuran_jenis_id===jenisId && b.profile_id===p.id);
+    return `
+      <div class="topic-row">
+        <div class="l"><span class="status-dot ${bayar && bayar.status==='lunas' ? 'sd-selesai' : 'sd-belum'}"></span>
+        <div><b style="font-size:12.5px;">${p.nama}</b></div></div>
+        <button class="btn btn-ghost btn-sm toggle-lunas" data-pid="${p.id}" data-status="${bayar ? bayar.status : 'belum'}" style="padding:5px 10px; font-size:11.5px;">
+          ${bayar && bayar.status==='lunas' ? 'Lunas ✓' : 'Tandai lunas'}
+        </button>
+      </div>
+    `;
+  }).join('');
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>${jenis.nama}</h3>
+      <p class="mk" style="margin-bottom:14px;">${jenis.frekuensi}${jenis.nominal ? ' · Rp' + Number(jenis.nominal).toLocaleString('id-ID') + ' /orang' : ''}</p>
+      <div>${rows}</div>
+      <button class="btn btn-ghost" id="di-close" style="margin-top:16px;">Tutup</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('di-close').onclick = ()=> overlay.remove();
+  document.querySelectorAll('.toggle-lunas').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const pid = btn.dataset.pid;
+      const sudahLunas = btn.dataset.status === 'lunas';
+      const existing = state.iuranPembayaran.find(b=>b.iuran_jenis_id===jenisId && b.profile_id===pid);
+      if(existing){
+        await sb.from('iuran_pembayaran').update({ status: sudahLunas ? 'belum' : 'lunas', tanggal_bayar: sudahLunas ? null : new Date().toISOString() }).eq('id', existing.id);
+      } else {
+        await sb.from('iuran_pembayaran').insert({
+          iuran_jenis_id: jenisId, profile_id: pid, jumlah: jenis.nominal || 0,
+          status: 'lunas', tanggal_bayar: new Date().toISOString(), dicatat_oleh: state.profile.id,
+        });
+      }
+      overlay.remove();
+      await renderIuran();
+      openDetailIuranSheet(jenisId);
+    };
+  });
+}
+
+async function loadPengaturan(){
   if(!sb) return;
-  const { data } = await sb.from('pengaturan').select('logo_url').eq('id', 1).single();
-  if(data) state.logoUrl = data.logo_url;
+  const { data } = await sb.from('pengaturan').select('logo_url, reminder_days').eq('id', 1).single();
+  if(data){
+    state.logoUrl = data.logo_url;
+    state.reminderDays = (data.reminder_days || '3,1').split(',').map(Number);
+  }
 }
 
 async function init(){
@@ -853,7 +1348,7 @@ async function init(){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
   if(!sb){ renderLanding(); return; }
-  await loadLogo();
+  await loadPengaturan();
   renderLanding();
 }
 init();
