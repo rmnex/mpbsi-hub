@@ -516,6 +516,18 @@ function renderDashboard(){
         </div>
         ${members.length ? `<div class="progress-bar"><div style="width:${pct}%;"></div></div>` : ''}
       `;
+    } else if(t.kategori === 'Individu' && t.lacak_progres && !t.butuh_giliran){
+      const totalMhs = state.profiles.filter(p=>p.nim).length || 14;
+      const done = members.filter(m=>m.status==='selesai').length;
+      const pct = totalMhs ? Math.round(done/totalMhs*100) : 0;
+      membersHtml = `
+        <p style="font-size:11.5px; color:var(--muted); margin:0 0 6px;">${done} dari ${totalMhs} sudah selesai</p>
+        <div class="progress-bar"><div style="width:${pct}%;"></div></div>
+      `;
+    } else if(t.kategori === 'Individu' && t.lacak_progres && t.butuh_giliran){
+      membersHtml = `
+        <p style="font-size:11.5px; color:var(--muted); margin:0 0 6px;">${members.length} orang sudah jadwalkan giliran</p>
+      `;
     }
     const fm = formatMeta[t.jenis_tugas] || formatMeta['Lainnya'];
     card.innerHTML = `
@@ -560,13 +572,30 @@ function openAddTaskSheet(){
       </div>
       <div class="field"><label>Deskripsi tugas</label><textarea id="f-deskripsi" rows="3" placeholder="Instruksi dari dosen, format pengumpulan, dll."></textarea></div>
       <div class="field"><label>Deadline</label><input id="f-deadline" type="datetime-local" /></div>
+
       <div id="f-anggota-section" class="hidden">
         <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:5px; font-weight:500;">Anggota kelompok (opsional, bisa ditambah lagi nanti)</label>
         <div class="field"><input id="f-nama-kelompok" type="text" placeholder="Nama kelompok, misal: Kelompok 3 (opsional)" /></div>
+        <div class="field"><input id="f-topik-kelompok" type="text" placeholder="Topik/materi kelompok (opsional)" /></div>
         <div style="display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto; border:1px solid var(--line); border-radius:9px; padding:8px; margin-bottom:12px;">
           ${state.profiles.map(p=>`<label style="display:flex; align-items:center; gap:8px; font-size:13px;"><input type="checkbox" class="f-member-check" value="${p.id}" style="width:auto;" /> ${p.nama}</label>`).join('')}
         </div>
       </div>
+
+      <div id="f-individu-lacak-section" class="hidden">
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:10px;">
+          <input type="checkbox" id="f-lacak-progres" style="width:auto;" /> Lacak progres per orang (siapa sudah, siapa belum)
+        </label>
+        <div id="f-giliran-opsi" class="hidden" style="margin:0 0 16px 24px;">
+          <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:6px;">Perlu jadwal giliran (presentasi bergantian satu-satu)?</label>
+          <div class="type-badge-select">
+            <button type="button" class="type-opt active" id="f-giliran-tidak">Tidak, wajib semua</button>
+            <button type="button" class="type-opt" id="f-giliran-ya">Ya, bergiliran</button>
+          </div>
+          <p class="hint" style="text-align:left; margin-top:6px;">"Tidak" = otomatis 14 nama muncul, tinggal dicentang selesai. "Ya" = tiap orang gabung sendiri dengan topik &amp; tanggal maju masing-masing.</p>
+        </div>
+      </div>
+
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:16px;">
         <input type="checkbox" id="f-diskusi" style="width:auto;" /> Tandai perlu didiskusikan bersama
       </label>
@@ -576,11 +605,33 @@ function openAddTaskSheet(){
   `;
   document.body.appendChild(overlay);
   let kategoriTerpilih = 'Individu';
+  let butuhGiliran = false;
   const btnInd = document.getElementById('f-kat-individu');
   const btnKel = document.getElementById('f-kat-kelompok');
   const anggotaSection = document.getElementById('f-anggota-section');
-  btnInd.onclick = ()=>{ kategoriTerpilih='Individu'; btnInd.classList.add('active'); btnKel.classList.remove('active'); anggotaSection.classList.add('hidden'); };
-  btnKel.onclick = ()=>{ kategoriTerpilih='Kelompok'; btnKel.classList.add('active'); btnInd.classList.remove('active'); anggotaSection.classList.remove('hidden'); };
+  const individuLacakSection = document.getElementById('f-individu-lacak-section');
+  const giliranOpsi = document.getElementById('f-giliran-opsi');
+  const lacakCheckbox = document.getElementById('f-lacak-progres');
+  const btnGiliranTidak = document.getElementById('f-giliran-tidak');
+  const btnGiliranYa = document.getElementById('f-giliran-ya');
+
+  const updateKategoriUI = ()=>{
+    if(kategoriTerpilih === 'Individu'){
+      anggotaSection.classList.add('hidden');
+      individuLacakSection.classList.remove('hidden');
+    } else {
+      anggotaSection.classList.remove('hidden');
+      individuLacakSection.classList.add('hidden');
+    }
+  };
+  btnInd.onclick = ()=>{ kategoriTerpilih='Individu'; btnInd.classList.add('active'); btnKel.classList.remove('active'); updateKategoriUI(); };
+  btnKel.onclick = ()=>{ kategoriTerpilih='Kelompok'; btnKel.classList.add('active'); btnInd.classList.remove('active'); updateKategoriUI(); };
+  updateKategoriUI();
+
+  lacakCheckbox.onchange = ()=>{ giliranOpsi.classList.toggle('hidden', !lacakCheckbox.checked); };
+  btnGiliranTidak.onclick = ()=>{ butuhGiliran=false; btnGiliranTidak.classList.add('active'); btnGiliranYa.classList.remove('active'); };
+  btnGiliranYa.onclick = ()=>{ butuhGiliran=true; btnGiliranYa.classList.add('active'); btnGiliranTidak.classList.remove('active'); };
+
   const updateHint = ()=>{
     const mk = state.mataKuliah.find(m=>m.id===document.getElementById('f-mk').value);
     document.getElementById('f-dosen-hint').textContent = mk && mk.dosen ? 'Dosen: ' + mk.dosen : '';
@@ -591,6 +642,7 @@ function openAddTaskSheet(){
     const judul = document.getElementById('f-judul').value.trim();
     const deadline = document.getElementById('f-deadline').value;
     if(!judul || !deadline){ toast('Judul dan deadline wajib diisi.'); return; }
+    const lacakProgres = kategoriTerpilih === 'Individu' ? lacakCheckbox.checked : false;
     const payload = {
       mk_id: document.getElementById('f-mk').value,
       judul_tugas: judul,
@@ -599,6 +651,8 @@ function openAddTaskSheet(){
       deskripsi: document.getElementById('f-deskripsi').value.trim(),
       deadline: new Date(deadline).toISOString(),
       butuh_diskusi: document.getElementById('f-diskusi').checked,
+      lacak_progres: lacakProgres,
+      butuh_giliran: lacakProgres ? butuhGiliran : false,
       dicatat_oleh: state.profile.id,
       updated_by: state.profile.id,
     };
@@ -606,11 +660,13 @@ function openAddTaskSheet(){
     if(error){ toast('Gagal simpan: ' + error.message); return; }
     if(kategoriTerpilih === 'Kelompok'){
       const namaKelompok = document.getElementById('f-nama-kelompok').value.trim();
+      const topikKelompok = document.getElementById('f-topik-kelompok').value.trim();
       const checked = [...document.querySelectorAll('.f-member-check:checked')].map(c=>c.value);
       if(checked.length > 0){
         const rows = checked.map(pid => ({
           tugas_id: inserted.id, profile_id: pid,
           nama_kelompok: namaKelompok || null,
+          topik_bagian: topikKelompok || null,
         }));
         await sb.from('tugas_anggota').insert(rows);
       }
@@ -643,6 +699,18 @@ function openEditTaskSheet(t){
         <select id="ef-jenis">${JENIS_TUGAS.map(j=>`<option value="${j}" ${j===t.jenis_tugas?'selected':''}>${j}</option>`).join('')}</select>
       </div>
       <div class="field"><label>Deskripsi tugas</label><textarea id="ef-deskripsi" rows="3">${t.deskripsi||''}</textarea></div>
+      <div id="ef-individu-lacak-section" class="${t.kategori==='Individu' ? '' : 'hidden'}">
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:10px;">
+          <input type="checkbox" id="ef-lacak-progres" ${t.lacak_progres?'checked':''} style="width:auto;" /> Lacak progres per orang (siapa sudah, siapa belum)
+        </label>
+        <div id="ef-giliran-opsi" class="${t.lacak_progres ? '' : 'hidden'}" style="margin:0 0 16px 24px;">
+          <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:6px;">Perlu jadwal giliran (presentasi bergantian satu-satu)?</label>
+          <div class="type-badge-select">
+            <button type="button" class="type-opt ${!t.butuh_giliran?'active':''}" id="ef-giliran-tidak">Tidak, wajib semua</button>
+            <button type="button" class="type-opt ${t.butuh_giliran?'active':''}" id="ef-giliran-ya">Ya, bergiliran</button>
+          </div>
+        </div>
+      </div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:16px;">
         <input type="checkbox" id="ef-diskusi" ${t.butuh_diskusi?'checked':''} style="width:auto;" /> Tandai perlu didiskusikan bersama
       </label>
@@ -652,14 +720,24 @@ function openEditTaskSheet(t){
   `;
   document.body.appendChild(overlay);
   let ekategoriTerpilih = t.kategori;
+  let eButuhGiliran = !!t.butuh_giliran;
   const ebtnInd = document.getElementById('ef-kat-individu');
   const ebtnKel = document.getElementById('ef-kat-kelompok');
-  ebtnInd.onclick = ()=>{ ekategoriTerpilih='Individu'; ebtnInd.classList.add('active'); ebtnKel.classList.remove('active'); };
-  ebtnKel.onclick = ()=>{ ekategoriTerpilih='Kelompok'; ebtnKel.classList.add('active'); ebtnInd.classList.remove('active'); };
+  const eIndividuLacakSection = document.getElementById('ef-individu-lacak-section');
+  const eGiliranOpsi = document.getElementById('ef-giliran-opsi');
+  const eLacakCheckbox = document.getElementById('ef-lacak-progres');
+  const eBtnGiliranTidak = document.getElementById('ef-giliran-tidak');
+  const eBtnGiliranYa = document.getElementById('ef-giliran-ya');
+  ebtnInd.onclick = ()=>{ ekategoriTerpilih='Individu'; ebtnInd.classList.add('active'); ebtnKel.classList.remove('active'); eIndividuLacakSection.classList.remove('hidden'); };
+  ebtnKel.onclick = ()=>{ ekategoriTerpilih='Kelompok'; ebtnKel.classList.add('active'); ebtnInd.classList.remove('active'); eIndividuLacakSection.classList.add('hidden'); };
+  eLacakCheckbox.onchange = ()=>{ eGiliranOpsi.classList.toggle('hidden', !eLacakCheckbox.checked); };
+  eBtnGiliranTidak.onclick = ()=>{ eButuhGiliran=false; eBtnGiliranTidak.classList.add('active'); eBtnGiliranYa.classList.remove('active'); };
+  eBtnGiliranYa.onclick = ()=>{ eButuhGiliran=true; eBtnGiliranYa.classList.add('active'); eBtnGiliranTidak.classList.remove('active'); };
   document.getElementById('ef-cancel').onclick = ()=> overlay.remove();
   document.getElementById('ef-save').onclick = async ()=>{
     const judul = document.getElementById('ef-judul').value.trim();
     if(!judul){ toast('Judul tidak boleh kosong.'); return; }
+    const lacakProgres = ekategoriTerpilih === 'Individu' ? eLacakCheckbox.checked : false;
     const payload = {
       mk_id: document.getElementById('ef-mk').value,
       judul_tugas: judul,
@@ -667,6 +745,8 @@ function openEditTaskSheet(t){
       jenis_tugas: document.getElementById('ef-jenis').value,
       deskripsi: document.getElementById('ef-deskripsi').value.trim(),
       butuh_diskusi: document.getElementById('ef-diskusi').checked,
+      lacak_progres: lacakProgres,
+      butuh_giliran: lacakProgres ? eButuhGiliran : false,
       updated_by: state.profile.id,
     };
     const { error } = await sb.from('tugas').update(payload).eq('id', t.id);
@@ -698,30 +778,35 @@ function openTaskDetail(tugasId){
       </label>
   ` : '';
 
-  const groupSection = t.kategori === 'Kelompok' ? (()=>{
+  const showGiliranUI = t.kategori === 'Kelompok' || (t.kategori === 'Individu' && t.lacak_progres && t.butuh_giliran);
+  const showWajibSemua = t.kategori === 'Individu' && t.lacak_progres && !t.butuh_giliran;
+
+  const groupSection = showGiliranUI ? (()=>{
     // kelompokkan anggota: yang punya nama_kelompok sama digabung jadi satu baris
     const solo = members.filter(m=>!m.nama_kelompok);
     const groupNames = [...new Set(members.filter(m=>m.nama_kelompok).map(m=>m.nama_kelompok))];
     const groupRows = groupNames.map(gn=>{
       const anggotaGrup = members.filter(m=>m.nama_kelompok===gn);
       const earliest = anggotaGrup.reduce((min,m)=> (m.tanggal_giliran && (!min || new Date(m.tanggal_giliran)<new Date(min))) ? m.tanggal_giliran : min, null);
-      return { isGroup:true, nama_kelompok:gn, anggota:anggotaGrup, tanggal_giliran: earliest, topik_bagian: anggotaGrup[0].topik_bagian, status: anggotaGrup.every(a=>a.status==='selesai') ? 'selesai' : (anggotaGrup.some(a=>a.status==='proses') ? 'proses' : 'belum mulai') };
+      return { isGroup:true, nama_kelompok:gn, anggota:anggotaGrup, ids: anggotaGrup.map(a=>a.id), tanggal_giliran: earliest, topik_bagian: anggotaGrup[0].topik_bagian, status: anggotaGrup.every(a=>a.status==='selesai') ? 'selesai' : (anggotaGrup.some(a=>a.status==='proses') ? 'proses' : 'belum mulai') };
     });
-    const allRows = [...solo.map(m=>({isGroup:false, ...m})), ...groupRows].sort((a,b)=>{
+    const allRows = [...solo.map(m=>({isGroup:false, ids:[m.id], ...m})), ...groupRows].sort((a,b)=>{
       if(!a.tanggal_giliran && !b.tanggal_giliran) return 0;
       if(!a.tanggal_giliran) return 1;
       if(!b.tanggal_giliran) return -1;
       return new Date(a.tanggal_giliran) - new Date(b.tanggal_giliran);
     });
     return `
-    <p style="font-size:13px; font-weight:600; margin:16px 0 8px;">Anggota &amp; giliran</p>
+    <p style="font-size:13px; font-weight:600; margin:16px 0 8px;">Anggota &amp; giliran ${t.kategori==='Individu' ? '(presentasi bergilir)' : ''}</p>
     <div class="task-detail-topics" id="d-topics">
-      ${allRows.map(r=>`
+      ${allRows.map((r,i)=>`
         <div class="topic-row">
-          <div class="l"><span class="status-dot sd-${r.status.replace(' ','')==='belummulai'?'belum':r.status}"></span>
-          <div><b style="font-size:12.5px;">${r.isGroup ? ('Kelompok: ' + r.nama_kelompok) : profileName(r.profile_id)}</b><br/>
-          ${r.isGroup ? `<span style="font-size:11px; color:var(--muted);">${r.anggota.map(a=>profileName(a.profile_id)).join(', ')}</span><br/>` : ''}
-          <span style="font-size:11.5px; color:var(--muted);">${r.topik_bagian || 'Belum isi topik'}${r.tanggal_giliran ? ' · ' + fmtDate(r.tanggal_giliran) : ''}</span></div></div>
+          <label class="l" style="cursor:${state.profile ? 'pointer':'default'};">
+            <input type="checkbox" class="row-ceklis" data-ids="${r.ids.join(',')}" ${r.status==='selesai'?'checked':''} ${state.profile ? '' : 'disabled'} style="width:16px; height:16px;" />
+            <div><b style="font-size:12.5px;">${r.isGroup ? ('Kelompok: ' + r.nama_kelompok) : profileName(r.profile_id)}</b><br/>
+            ${r.isGroup ? `<span style="font-size:11px; color:var(--muted);">${r.anggota.map(a=>profileName(a.profile_id)).join(', ')}</span><br/>` : ''}
+            <span style="font-size:11.5px; color:var(--muted);">${r.topik_bagian || 'Belum isi topik'}${r.tanggal_giliran ? ' · ' + fmtDate(r.tanggal_giliran) : ''}</span></div>
+          </label>
         </div>
       `).join('') || '<p class="hint">Belum ada anggota yang gabung.</p>'}
     </div>
@@ -737,10 +822,11 @@ function openTaskDetail(tugasId){
     ${(state.profile && isPengurus()) ? `
       <div style="border-top:1px solid var(--line); padding-top:14px; margin-top:4px;">
         <p style="font-size:13px; font-weight:600; margin:0 0 10px;">Atur giliran untuk anggota lain</p>
+        ${t.kategori==='Kelompok' ? `
         <div class="type-badge-select">
           <button class="type-opt active" id="pg-tab-individu" type="button">Individu</button>
           <button class="type-opt" id="pg-tab-kelompok" type="button">Kelompok</button>
-        </div>
+        </div>` : ''}
         <div id="pg-form-individu" style="margin-top:12px;">
           <div class="field"><label>Pilih anggota</label>
             <select id="pg-profile">${state.profiles.filter(p=>!members.find(m=>m.profile_id===p.id)).map(p=>`<option value="${p.id}">${p.nama}</option>`).join('')}</select>
@@ -749,6 +835,7 @@ function openTaskDetail(tugasId){
           <div class="field"><label>Tanggal &amp; jam giliran</label><input id="pg-giliran" type="datetime-local" /></div>
           <button class="btn btn-ghost" id="pg-save-individu" style="margin-bottom:6px;">Tambahkan</button>
         </div>
+        ${t.kategori==='Kelompok' ? `
         <div id="pg-form-kelompok" class="hidden" style="margin-top:12px;">
           <div class="field"><label>Nama kelompok</label><input id="pg-nama-kelompok" type="text" placeholder="Misal: Kelompok 3" /></div>
           <div class="field"><label>Pilih anggota kelompok</label>
@@ -759,15 +846,40 @@ function openTaskDetail(tugasId){
           <div class="field"><label>Topik/bagian kelompok</label><input id="pg-topik-k" type="text" placeholder="Misal: Bab 3 - Metode Penelitian" /></div>
           <div class="field"><label>Tanggal &amp; jam giliran</label><input id="pg-giliran-k" type="datetime-local" /></div>
           <button class="btn btn-ghost" id="pg-save-kelompok" style="margin-bottom:6px;">Tambahkan kelompok</button>
-        </div>
+        </div>` : ''}
       </div>
     ` : ''}
-  `; })() : `
-    ${!isPengurus() ? `
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:14px;">
-        <span style="color:var(--muted); font-size:12.5px;">Hanya ketua/sekretaris yang bisa menandai tugas ini selesai.</span>
-      </label>
-    ` : ''}
+  `; })() : '';
+
+  const wajibSemuaSection = showWajibSemua ? (()=>{
+    const rows = state.profiles.filter(p=>p.nim).map(p=>{
+      const m = members.find(x=>x.profile_id===p.id);
+      return { profile_id: p.id, nama: p.nama, status: m ? m.status : 'belum mulai', rowId: m ? m.id : null };
+    });
+    const selesaiCount = rows.filter(r=>r.status==='selesai').length;
+    return `
+    <p style="font-size:13px; font-weight:600; margin:16px 0 2px;">Progres per orang</p>
+    <p class="hint" style="text-align:left; margin:0 0 10px;">${selesaiCount} dari ${rows.length} sudah menyelesaikan.</p>
+    <div class="task-detail-topics" id="d-wajib-list">
+      ${rows.map(r=>`
+        <div class="topic-row">
+          <label class="l" style="cursor:${(state.profile && (state.profile.id===r.profile_id || isPengurus())) ? 'pointer':'default'};">
+            <input type="checkbox" class="wajib-ceklis" data-pid="${r.profile_id}" data-rowid="${r.rowId||''}" ${r.status==='selesai'?'checked':''} ${(state.profile && (state.profile.id===r.profile_id || isPengurus())) ? '' : 'disabled'} style="width:16px; height:16px;" />
+            <div><b style="font-size:12.5px;">${r.nama}</b></div>
+          </label>
+        </div>
+      `).join('')}
+    </div>
+  `; })() : '';
+
+  const kesimpulanSection = `
+    <div style="border-top:1px solid var(--line); padding-top:14px; margin-top:16px;">
+      <p style="font-size:13px; font-weight:600; margin:0 0 4px;">Catatan / kesimpulan materi</p>
+      <p class="hint" style="text-align:left; margin:0 0 8px;">Siapa saja bisa isi atau edit.</p>
+      <textarea id="d-kesimpulan" rows="4" placeholder="Tulis rangkuman/kesimpulan materi di sini..." ${state.profile ? '' : 'disabled'}>${t.kesimpulan||''}</textarea>
+      ${t.kesimpulan_updated_by ? `<p class="hint" style="text-align:left; margin:6px 0 0;">Terakhir diubah oleh ${profileName(t.kesimpulan_updated_by)}${t.kesimpulan_updated_at ? ', ' + fmtDate(t.kesimpulan_updated_at) : ''}</p>` : ''}
+      ${state.profile ? `<button class="btn btn-ghost" id="d-save-kesimpulan" style="margin-top:8px;">Simpan kesimpulan</button>` : ''}
+    </div>
   `;
 
   overlay.innerHTML = `
@@ -781,11 +893,53 @@ function openTaskDetail(tugasId){
       <p class="deadline-tag ${deadlineStatus(t.deadline,t.selesai).cls}">${deadlineStatus(t.deadline,t.selesai).label}</p>
       ${pengurusControls}
       ${groupSection}
+      ${wajibSemuaSection}
+      ${kesimpulanSection}
       <button class="btn btn-ghost" id="d-close" style="margin-top:10px;">Tutup</button>
     </div>
   `;
   document.body.appendChild(overlay);
   document.getElementById('d-close').onclick = ()=> overlay.remove();
+
+  document.querySelectorAll('.row-ceklis').forEach(cb=>{
+    cb.onchange = async ()=>{
+      const ids = cb.dataset.ids.split(',').filter(Boolean);
+      const statusBaru = cb.checked ? 'selesai' : 'belum mulai';
+      await sb.from('tugas_anggota').update({ status: statusBaru }).in('id', ids);
+      await loadAll();
+      overlay.remove();
+      openTaskDetail(tugasId);
+    };
+  });
+  document.querySelectorAll('.wajib-ceklis').forEach(cb=>{
+    cb.onchange = async ()=>{
+      const pid = cb.dataset.pid;
+      const rowId = cb.dataset.rowid;
+      const statusBaru = cb.checked ? 'selesai' : 'belum mulai';
+      if(rowId){
+        await sb.from('tugas_anggota').update({ status: statusBaru }).eq('id', rowId);
+      } else {
+        await sb.from('tugas_anggota').insert({ tugas_id: t.id, profile_id: pid, status: statusBaru });
+      }
+      await loadAll();
+      overlay.remove();
+      openTaskDetail(tugasId);
+    };
+  });
+  const kesimpulanBtn = document.getElementById('d-save-kesimpulan');
+  if(kesimpulanBtn){
+    kesimpulanBtn.onclick = async ()=>{
+      const isi = document.getElementById('d-kesimpulan').value.trim();
+      const { error } = await sb.from('tugas').update({
+        kesimpulan: isi, kesimpulan_updated_by: state.profile.id, kesimpulan_updated_at: new Date().toISOString(),
+      }).eq('id', t.id);
+      if(error){ toast('Gagal simpan: ' + error.message); return; }
+      toast('Kesimpulan disimpan.');
+      overlay.remove();
+      await loadAll();
+      openTaskDetail(tugasId);
+    };
+  }
 
   if(isPengurus()){
     document.getElementById('d-edit').onclick = ()=>{ overlay.remove(); openEditTaskSheet(t); };
@@ -834,7 +988,7 @@ function openTaskDetail(tugasId){
   // Form pengurus: atur giliran untuk anggota lain (individu / kelompok bernama)
   const tabIndividu = document.getElementById('pg-tab-individu');
   const tabKelompok = document.getElementById('pg-tab-kelompok');
-  if(tabIndividu){
+  if(tabIndividu && tabKelompok){
     tabIndividu.onclick = ()=>{
       tabIndividu.classList.add('active'); tabKelompok.classList.remove('active');
       document.getElementById('pg-form-individu').classList.remove('hidden');
@@ -845,7 +999,10 @@ function openTaskDetail(tugasId){
       document.getElementById('pg-form-kelompok').classList.remove('hidden');
       document.getElementById('pg-form-individu').classList.add('hidden');
     };
-    document.getElementById('pg-save-individu').onclick = async ()=>{
+  }
+  const pgSaveIndividuBtn = document.getElementById('pg-save-individu');
+  if(pgSaveIndividuBtn){
+    pgSaveIndividuBtn.onclick = async ()=>{
       const profileId = document.getElementById('pg-profile').value;
       if(!profileId){ toast('Semua anggota sudah punya giliran.'); return; }
       const topik = document.getElementById('pg-topik').value.trim();
@@ -857,7 +1014,10 @@ function openTaskDetail(tugasId){
       if(error) return toast('Gagal tambah: ' + error.message);
       toast('Giliran ditambahkan.'); overlay.remove(); await loadAll(); renderDashboard();
     };
-    document.getElementById('pg-save-kelompok').onclick = async ()=>{
+  }
+  const pgSaveKelompokBtn = document.getElementById('pg-save-kelompok');
+  if(pgSaveKelompokBtn){
+    pgSaveKelompokBtn.onclick = async ()=>{
       const namaKelompok = document.getElementById('pg-nama-kelompok').value.trim();
       const topik = document.getElementById('pg-topik-k').value.trim();
       const giliran = document.getElementById('pg-giliran-k').value;
@@ -872,12 +1032,6 @@ function openTaskDetail(tugasId){
       toast('Kelompok ditambahkan.'); overlay.remove(); await loadAll(); renderDashboard();
     };
   }
-  document.querySelectorAll('.d-status-select').forEach(sel=>{
-    sel.onchange = async ()=>{
-      await sb.from('tugas_anggota').update({ status: sel.value }).eq('id', sel.dataset.id);
-      await loadAll();
-    };
-  });
 }
 
 /* ================== SHEET: PENGATURAN LOGO ================== */
