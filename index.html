@@ -908,6 +908,7 @@ function openTaskDetail(tugasId){
       await sb.from('tugas_anggota').update({ status: statusBaru }).in('id', ids);
       await loadAll();
       overlay.remove();
+      renderDashboard();
       openTaskDetail(tugasId);
     };
   });
@@ -923,6 +924,7 @@ function openTaskDetail(tugasId){
       }
       await loadAll();
       overlay.remove();
+      renderDashboard();
       openTaskDetail(tugasId);
     };
   });
@@ -1035,6 +1037,137 @@ function openTaskDetail(tugasId){
 }
 
 /* ================== SHEET: PENGATURAN LOGO ================== */
+/* ================== KELOLA MATA KULIAH ================== */
+function openKelolaMataKuliahSheet(){
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Kelola mata kuliah</h3>
+      <button class="btn btn-primary" id="mk-tambah-baru" style="margin-bottom:16px;">+ Tambah mata kuliah baru</button>
+      <div id="mk-list"></div>
+      <button class="btn btn-ghost" id="mk-close" style="margin-top:12px;">Tutup</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('mk-close').onclick = ()=> overlay.remove();
+  document.getElementById('mk-tambah-baru').onclick = ()=>{ overlay.remove(); openFormMataKuliahSheet(null); };
+
+  const listEl = document.getElementById('mk-list');
+  const sorted = [...state.mataKuliah].sort((a,b)=> (a.semester||99) - (b.semester||99) || a.nama_mk.localeCompare(b.nama_mk));
+  sorted.forEach(m=>{
+    const row = document.createElement('div');
+    row.className = 'card';
+    row.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:start;">
+        <div>
+          <p class="title" style="margin:0 0 2px;">${m.nama_mk}</p>
+          <p class="mk">${m.dosen || 'Dosen belum diisi'}</p>
+          ${m.semester ? `<p class="hint" style="text-align:left; margin:2px 0 0;">Semester ${m.semester}</p>` : ''}
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="link-btn edit-mk" data-id="${m.id}">Edit</button>
+          <button class="link-btn del-mk" data-id="${m.id}" style="color:var(--danger);">Hapus</button>
+        </div>
+      </div>
+    `;
+    listEl.appendChild(row);
+  });
+  document.querySelectorAll('.edit-mk').forEach(btn=>{
+    btn.onclick = ()=>{
+      const mk = state.mataKuliah.find(m=>m.id===btn.dataset.id);
+      overlay.remove();
+      openFormMataKuliahSheet(mk);
+    };
+  });
+  document.querySelectorAll('.del-mk').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const mk = state.mataKuliah.find(m=>m.id===btn.dataset.id);
+      if(!confirm(`Hapus mata kuliah "${mk.nama_mk}"? Tugas yang sudah memakai mata kuliah ini tidak ikut terhapus, tapi jadi tidak terhubung ke mata kuliah manapun.`)) return;
+      await sb.from('mata_kuliah').delete().eq('id', mk.id);
+      overlay.remove();
+      await loadAll();
+      openKelolaMataKuliahSheet();
+      toast('Mata kuliah dihapus.');
+    };
+  });
+}
+
+function openFormMataKuliahSheet(mk){
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>${mk ? 'Edit mata kuliah' : 'Tambah mata kuliah baru'}</h3>
+      <div class="field"><label>Nama mata kuliah</label><input id="fmk-nama" type="text" value="${mk ? (mk.nama_mk||'').replace(/"/g,'&quot;') : ''}" placeholder="Misal: Landasan Pendidikan" /></div>
+      <div class="field"><label>Dosen pengampu</label><input id="fmk-dosen" type="text" value="${mk ? (mk.dosen||'').replace(/"/g,'&quot;') : ''}" placeholder="Prof. Dr. ..." /></div>
+      <div class="field"><label>Semester (opsional, keterangan saja)</label>
+        <select id="fmk-semester">
+          <option value="">-- tidak diisi --</option>
+          ${[1,2,3,4,5,6,7,8].map(s=>`<option value="${s}" ${mk && mk.semester===s ? 'selected':''}>Semester ${s}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary" id="fmk-save">Simpan</button>
+      <button class="btn btn-ghost" id="fmk-cancel" style="margin-top:8px;">Batal</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('fmk-cancel').onclick = ()=>{ overlay.remove(); openKelolaMataKuliahSheet(); };
+  document.getElementById('fmk-save').onclick = async ()=>{
+    const nama_mk = document.getElementById('fmk-nama').value.trim();
+    const dosen = document.getElementById('fmk-dosen').value.trim();
+    const semesterVal = document.getElementById('fmk-semester').value;
+    if(!nama_mk){ toast('Nama mata kuliah wajib diisi.'); return; }
+    const payload = { nama_mk, dosen, semester: semesterVal ? Number(semesterVal) : null };
+    let error;
+    if(mk){
+      ({ error } = await sb.from('mata_kuliah').update(payload).eq('id', mk.id));
+    } else {
+      ({ error } = await sb.from('mata_kuliah').insert(payload));
+    }
+    if(error){ toast('Gagal simpan: ' + error.message); return; }
+    overlay.remove();
+    await loadAll();
+    openKelolaMataKuliahSheet();
+    toast(mk ? 'Mata kuliah diperbarui.' : 'Mata kuliah ditambahkan.');
+  };
+}
+
+/* ================== RESET DATA ================== */
+function openResetDataSheet(){
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3 style="color:var(--danger);">Reset semua data</h3>
+      <p style="font-size:13px; color:var(--ink); line-height:1.5; margin:0 0 14px;">
+        Ini akan menghapus PERMANEN seluruh: tugas (beserta anggota &amp; giliran), catatan, dan data iuran (jenis iuran &amp; status pembayaran).
+        Mata kuliah, daftar mahasiswa, logo, dan rekening bank <b>tidak</b> ikut terhapus.
+      </p>
+      <p style="font-size:13px; font-weight:600; margin:0 0 6px;">Ketik <span style="color:var(--danger);">HAPUS</span> untuk konfirmasi:</p>
+      <div class="field"><input id="rd-konfirmasi" type="text" placeholder="HAPUS" /></div>
+      <button class="btn btn-primary" id="rd-submit" style="background:var(--danger);">Ya, hapus semua data</button>
+      <button class="btn btn-ghost" id="rd-cancel" style="margin-top:8px;">Batal</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('rd-cancel').onclick = ()=> overlay.remove();
+  document.getElementById('rd-submit').onclick = async ()=>{
+    const val = document.getElementById('rd-konfirmasi').value.trim();
+    if(val !== 'HAPUS'){ toast('Ketik HAPUS (huruf besar) untuk konfirmasi.'); return; }
+    await sb.from('tugas').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await sb.from('catatan').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await sb.from('iuran_jenis').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    overlay.remove();
+    await loadAll();
+    renderDashboard();
+    toast('Semua data berhasil direset.');
+  };
+}
+
 function openSettingsSheet(){
   const overlay = document.createElement('div');
   overlay.className = 'sheet-overlay';
@@ -1066,11 +1199,20 @@ function openSettingsSheet(){
       </div>
       <button class="btn btn-ghost" id="s-save-reminder">Simpan frekuensi</button>
 
-      <button class="btn btn-ghost" id="s-close" style="margin-top:16px;">Tutup</button>
+      <p style="font-size:13px; font-weight:600; margin:20px 0 8px; border-top:1px solid var(--line); padding-top:16px;">Mata kuliah</p>
+      <button class="btn btn-ghost" id="s-kelola-mk" style="margin-bottom:16px;">Kelola mata kuliah</button>
+
+      <p style="font-size:13px; font-weight:600; margin:0 0 8px; border-top:1px solid var(--line); padding-top:16px; color:var(--danger);">Zona berbahaya</p>
+      <p class="hint" style="text-align:left; margin:0 0 10px;">Menghapus SEMUA tugas, catatan, dan data iuran secara permanen. Mata kuliah dan daftar mahasiswa tidak ikut terhapus.</p>
+      <button class="btn btn-ghost" id="s-reset-data" style="color:var(--danger); border-color:#EAB2B6; margin-bottom:16px;">Reset semua data</button>
+
+      <button class="btn btn-ghost" id="s-close">Tutup</button>
     </div>
   `;
   document.body.appendChild(overlay);
   document.getElementById('s-close').onclick = ()=> overlay.remove();
+  document.getElementById('s-kelola-mk').onclick = ()=>{ overlay.remove(); openKelolaMataKuliahSheet(); };
+  document.getElementById('s-reset-data').onclick = ()=>{ overlay.remove(); openResetDataSheet(); };
   document.getElementById('s-save-reminder').onclick = async ()=>{
     const days = [...document.querySelectorAll('.s-reminder-day:checked')].map(c=>c.value).join(',');
     const { error } = await sb.from('pengaturan').update({ reminder_days: days || '3,1', updated_by: state.profile.id }).eq('id', 1);
