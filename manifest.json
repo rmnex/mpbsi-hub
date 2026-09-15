@@ -1,0 +1,16 @@
+{
+  "name": "MPBSI Hub",
+  "short_name": "MPBSI Hub",
+  "description": "Pusat tugas kuliah kelas S2 MPBSI Angkatan 2026",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F7F8F7",
+  "theme_color": "#0F6E56",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='36' fill='%230F6E56'/%3E%3Ctext x='96' y='128' font-size='104' fill='white' text-anchor='middle' font-family='Arial'%3EM%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
