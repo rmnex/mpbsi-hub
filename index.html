@@ -605,12 +605,17 @@ function openTaskDetail(tugasId){
   ` : '';
 
   const groupSection = t.jenis_tugas === 'Tugas Kelompok' ? `
-    <p style="font-size:13px; font-weight:600; margin:16px 0 8px;">Anggota &amp; topik</p>
+    <p style="font-size:13px; font-weight:600; margin:16px 0 8px;">Anggota &amp; giliran</p>
     <div class="task-detail-topics" id="d-topics">
-      ${members.map(m=>`
+      ${[...members].sort((a,b)=>{
+          if(!a.tanggal_giliran && !b.tanggal_giliran) return 0;
+          if(!a.tanggal_giliran) return 1;
+          if(!b.tanggal_giliran) return -1;
+          return new Date(a.tanggal_giliran) - new Date(b.tanggal_giliran);
+        }).map(m=>`
         <div class="topic-row">
           <div class="l"><span class="status-dot sd-${m.status.replace(' ','')==='belummulai'?'belum':m.status}"></span>
-          <div><b style="font-size:12.5px;">${profileName(m.profile_id)}</b><br/><span style="font-size:11.5px; color:var(--muted);">${m.topik_bagian || 'Belum isi topik'}</span></div></div>
+          <div><b style="font-size:12.5px;">${profileName(m.profile_id)}</b><br/><span style="font-size:11.5px; color:var(--muted);">${m.topik_bagian || 'Belum isi topik'}${m.tanggal_giliran ? ' · ' + fmtDate(m.tanggal_giliran) : ''}</span></div></div>
           ${m.profile_id===state.profile?.id || (state.profile && isPengurus()) ? `<select data-id="${m.id}" class="d-status-select" style="width:auto; padding:5px 8px; font-size:11.5px;">
             <option value="belum mulai" ${m.status==='belum mulai'?'selected':''}>Belum mulai</option>
             <option value="proses" ${m.status==='proses'?'selected':''}>Proses</option>
@@ -621,7 +626,12 @@ function openTaskDetail(tugasId){
     </div>
     ${(state.profile && !myRow) ? `
       <div class="field"><label>Topik/bagian Anda</label><input id="d-topik" type="text" placeholder="Misal: Bab 2 - Kajian Teori" /></div>
+      <div class="field"><label>Tanggal &amp; jam giliran maju (opsional)</label><input id="d-giliran" type="datetime-local" /></div>
       <button class="btn btn-primary" id="d-join" style="margin-bottom:14px;">Tambah diri saya</button>
+    ` : ''}
+    ${(myRow) ? `
+      <div class="field"><label>Ubah tanggal giliran Anda</label><input id="d-giliran-edit" type="datetime-local" value="${myRow.tanggal_giliran ? new Date(myRow.tanggal_giliran).toISOString().slice(0,16) : ''}" /></div>
+      <button class="btn btn-ghost" id="d-giliran-save" style="margin-bottom:14px;">Simpan tanggal giliran</button>
     ` : ''}
   ` : `
     ${!isPengurus() ? `
@@ -672,9 +682,22 @@ function openTaskDetail(tugasId){
   if(joinBtn){
     joinBtn.onclick = async ()=>{
       const topik = document.getElementById('d-topik').value.trim();
-      const { error } = await sb.from('tugas_anggota').insert({ tugas_id: t.id, profile_id: state.profile.id, topik_bagian: topik });
+      const giliran = document.getElementById('d-giliran').value;
+      const { error } = await sb.from('tugas_anggota').insert({
+        tugas_id: t.id, profile_id: state.profile.id, topik_bagian: topik,
+        tanggal_giliran: giliran ? new Date(giliran).toISOString() : null,
+      });
       if(error) return toast('Gagal gabung: ' + error.message);
       toast('Berhasil ditambahkan ke tugas.'); overlay.remove(); await loadAll(); renderDashboard();
+    };
+  }
+  const giliranSaveBtn = document.getElementById('d-giliran-save');
+  if(giliranSaveBtn){
+    giliranSaveBtn.onclick = async ()=>{
+      const val = document.getElementById('d-giliran-edit').value;
+      const { error } = await sb.from('tugas_anggota').update({ tanggal_giliran: val ? new Date(val).toISOString() : null }).eq('id', myRow.id);
+      if(error) return toast('Gagal simpan: ' + error.message);
+      toast('Tanggal giliran disimpan.'); overlay.remove(); await loadAll(); renderDashboard();
     };
   }
   document.querySelectorAll('.d-status-select').forEach(sel=>{
