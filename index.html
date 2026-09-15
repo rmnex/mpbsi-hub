@@ -159,22 +159,18 @@ const sb = (SUPABASE_URL.includes("GANTI-INI")) ? null : window.supabase.createC
 
 /* ================== STATE ================== */
 let state = {
-  session: null,
   profile: null,
   profiles: [],
   mataKuliah: [],
   tugas: [],
   tugasAnggota: [],
   filter: 'Semua',
-  authMode: 'masuk', // masuk | daftar
   logoUrl: null,
   guestMode: false,
-  simpleLogin: true,
-  publicProfiles: [],
 };
 
-const JENIS_TUGAS = ['Presentasi/PPT','Makalah/Paper','Tugas Kelompok','Tugas Individu','Resume/Catatan Kuliah','Ujian/Kuis','Diskusi/Forum','Lainnya'];
-const badgeClass = { 'Presentasi/PPT':'b-presentasi','Makalah/Paper':'b-makalah','Tugas Kelompok':'b-kelompok','Tugas Individu':'b-individu','Resume/Catatan Kuliah':'b-lain','Ujian/Kuis':'b-presentasi','Diskusi/Forum':'b-lain','Lainnya':'b-lain' };
+const KATEGORI = ['Individu', 'Kelompok'];
+const JENIS_TUGAS = ['Presentasi/PPT','Makalah/Paper','Resume/Catatan Kuliah','Ujian/Kuis','Diskusi/Forum','Lainnya'];
 
 const ICONS = {
   semua: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
@@ -188,16 +184,21 @@ const ICONS = {
   lainnya: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
 };
 
+// chip filter dashboard: 3 saja (Semua / Individu / Kelompok)
 const chipMeta = {
-  'Semua':               { icon: ICONS.semua,      bg:'#EDEEF0', icbg:'#DCDEE2', text:'#3A3D42', solid:'#3A3D42' },
-  'Presentasi/PPT':      { icon: ICONS.presentasi,  bg:'#FAECE7', icbg:'#F0997B', text:'#993C1D', solid:'#D85A30' },
-  'Makalah/Paper':       { icon: ICONS.makalah,     bg:'#E1F5EE', icbg:'#5DCAA5', text:'#085041', solid:'#0F9E75' },
-  'Tugas Kelompok':      { icon: ICONS.kelompok,    bg:'#FCF2DC', icbg:'#FAC775', text:'#854F0B', solid:'#BA7517' },
-  'Tugas Individu':      { icon: ICONS.individu,    bg:'#EEEDFE', icbg:'#AFA9EC', text:'#3C3489', solid:'#534AB7' },
-  'Resume/Catatan Kuliah': { icon: ICONS.resume,    bg:'#E6F1FB', icbg:'#85B7EB', text:'#0C447C', solid:'#185FA5' },
-  'Ujian/Kuis':          { icon: ICONS.ujian,       bg:'#FCEBEB', icbg:'#F09595', text:'#791F1F', solid:'#A32D2D' },
-  'Diskusi/Forum':       { icon: ICONS.diskusi,     bg:'#FBEAF0', icbg:'#ED93B1', text:'#72243E', solid:'#993556' },
-  'Lainnya':             { icon: ICONS.lainnya,     bg:'#F1EFE8', icbg:'#B4B2A9', text:'#444441', solid:'#5F5E5A' },
+  'Semua':    { icon: ICONS.semua,    bg:'#EDEEF0', icbg:'#DCDEE2', text:'#3A3D42', solid:'#3A3D42' },
+  'Individu': { icon: ICONS.individu, bg:'#EEEDFE', icbg:'#AFA9EC', text:'#3C3489', solid:'#534AB7' },
+  'Kelompok': { icon: ICONS.kelompok, bg:'#FCF2DC', icbg:'#FAC775', text:'#854F0B', solid:'#BA7517' },
+};
+
+// badge format tugas di kartu (independen dari kategori)
+const formatMeta = {
+  'Presentasi/PPT':        { icon: ICONS.presentasi, bg:'#FAECE7', text:'#993C1D' },
+  'Makalah/Paper':         { icon: ICONS.makalah,    bg:'#E1F5EE', text:'#085041' },
+  'Resume/Catatan Kuliah': { icon: ICONS.resume,     bg:'#E6F1FB', text:'#0C447C' },
+  'Ujian/Kuis':            { icon: ICONS.ujian,      bg:'#FCEBEB', text:'#791F1F' },
+  'Diskusi/Forum':         { icon: ICONS.diskusi,    bg:'#FBEAF0', text:'#72243E' },
+  'Lainnya':               { icon: ICONS.lainnya,    bg:'#F1EFE8', text:'#444441' },
 };
 const avatarColors = ['#0F6E56','#3C3489','#993C1D','#993556','#185FA5','#854F0B'];
 
@@ -249,12 +250,8 @@ function renderLanding(){
     </div>
 
     <div class="auth-card">
-      <div class="auth-tabs">
-        <button id="tab-masuk" class="${state.authMode==='masuk'?'active':''}">Masuk</button>
-        <button id="tab-daftar" class="${state.authMode==='daftar'?'active':''}">Daftar</button>
-      </div>
       <div id="auth-form"></div>
-      <button class="btn btn-ghost" id="btn-guest" style="margin-top:10px;">Lihat tugas tanpa login</button>
+      <button class="btn btn-ghost" id="btn-guest" style="margin-top:10px;">Lihat tugas tanpa pilih nama</button>
     </div>
 
     <div class="features">
@@ -263,8 +260,6 @@ function renderLanding(){
       <div class="feature"><div class="ic" style="background:#EEEDFE; color:#3C3489;">&#128101;</div><div><h4>Kolaborasi kelompok</h4><p>Setiap anggota isi topiknya sendiri.</p></div></div>
     </div>
   `;
-  document.getElementById('tab-masuk').onclick = ()=>{ state.authMode='masuk'; renderLanding(); };
-  document.getElementById('tab-daftar').onclick = ()=>{ state.authMode='daftar'; renderLanding(); };
   document.getElementById('btn-guest').onclick = viewAsGuest;
   renderAuthForm();
 }
@@ -275,115 +270,46 @@ async function renderAuthForm(){
     el.innerHTML = `<p class="err-msg" style="text-align:center;">Aplikasi belum terhubung ke database. Lihat PANDUAN.md untuk mengisi konfigurasi Supabase.</p>`;
     return;
   }
-  if(state.authMode === 'masuk' && state.simpleLogin){
-    if(state.publicProfiles.length === 0){
-      const { data } = await sb.from('profiles').select('nama, nim').not('nim','is',null).order('nama');
-      state.publicProfiles = data || [];
-    }
-    el.innerHTML = `
-      <div class="field"><label>Pilih nama Anda</label>
-        <select id="a-nama-pilih">
-          <option value="">-- pilih nama --</option>
-          ${state.publicProfiles.map(p=>`<option value="${p.nim}">${p.nama}</option>`).join('')}
-        </select>
-      </div>
-      <button class="btn btn-primary" id="btn-masuk-simple">Masuk</button>
-      <p id="a-err" class="err-msg hidden"></p>
-      <p class="hint"><a href="#" id="link-manual">Login pakai email pribadi (untuk ketua/akun khusus)</a></p>
-    `;
-    document.getElementById('btn-masuk-simple').onclick = async ()=>{
-      const nim = document.getElementById('a-nama-pilih').value;
-      const errEl = document.getElementById('a-err');
-      errEl.classList.add('hidden');
-      if(!nim){ errEl.textContent = 'Pilih nama terlebih dahulu.'; errEl.classList.remove('hidden'); return; }
-      const { data, error } = await sb.auth.signInWithPassword({ email: nim + '@mpbsihub.com', password: 'Mpbsi2026!' });
-      if(error){ errEl.textContent = 'Gagal masuk otomatis (mungkin kata sandi sudah diganti). Coba "Login pakai email pribadi".'; errEl.classList.remove('hidden'); return; }
-      await afterLogin(data.session);
-    };
-    document.getElementById('link-manual').onclick = (e)=>{ e.preventDefault(); state.simpleLogin=false; renderAuthForm(); };
-    return;
+  if(state.profiles.length === 0){
+    const { data } = await sb.from('profiles').select('*').not('nim','is',null).order('nama');
+    state.profiles = data || [];
   }
-  if(state.authMode === 'masuk'){
-    el.innerHTML = `
-      <div class="field"><label>Email</label><input id="a-email" type="email" placeholder="nama@email.com" /></div>
-      <div class="field"><label>Kata sandi</label><input id="a-pass" type="password" placeholder="••••••••" /></div>
-      <button class="btn btn-primary" id="btn-masuk">Masuk ke akun</button>
-      <p id="a-err" class="err-msg hidden"></p>
-      <p class="hint"><a href="#" id="link-simple">Kembali ke pilih nama</a></p>
-    `;
-    document.getElementById('btn-masuk').onclick = doLogin;
-    document.getElementById('link-simple').onclick = (e)=>{ e.preventDefault(); state.simpleLogin=true; renderAuthForm(); };
-  } else {
-    el.innerHTML = `
-      <div class="field"><label>Nama lengkap</label><input id="a-nama" type="text" placeholder="Nama sesuai roster kelas" /></div>
-      <div class="field"><label>NIM</label><input id="a-nim" type="text" placeholder="2605078xxx" /></div>
-      <div class="field"><label>Email</label><input id="a-email" type="email" placeholder="nama@email.com" /></div>
-      <div class="field"><label>Kata sandi</label><input id="a-pass" type="password" placeholder="Minimal 6 karakter" /></div>
-      <button class="btn btn-primary" id="btn-daftar">Buat akun</button>
-      <p id="a-err" class="err-msg hidden"></p>
-      <p class="hint">Peran (ketua/sekretaris/anggota) diatur oleh pengurus kelas setelah Bapak/Ibu mendaftar.</p>
-    `;
-    document.getElementById('btn-daftar').onclick = doRegister;
-  }
+  el.innerHTML = `
+    <div class="field"><label>Pilih nama Anda</label>
+      <select id="a-nama-pilih">
+        <option value="">-- pilih nama --</option>
+        ${state.profiles.map(p=>`<option value="${p.id}">${p.nama}</option>`).join('')}
+      </select>
+    </div>
+    <p class="hint">Pilih nama Anda, aplikasi akan langsung membuka dashboard.</p>
+  `;
+  document.getElementById('a-nama-pilih').onchange = ()=>{
+    const id = document.getElementById('a-nama-pilih').value;
+    if(!id) return;
+    masukSebagai(id);
+  };
 }
 
-async function doLogin(){
-  const email = document.getElementById('a-email').value.trim();
-  const password = document.getElementById('a-pass').value;
-  const errEl = document.getElementById('a-err');
-  errEl.classList.add('hidden');
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if(error){ errEl.textContent = 'Gagal masuk: ' + error.message; errEl.classList.remove('hidden'); return; }
-  await afterLogin(data.session);
-}
-async function doRegister(){
-  const nama = document.getElementById('a-nama').value.trim();
-  const nim = document.getElementById('a-nim').value.trim();
-  const email = document.getElementById('a-email').value.trim();
-  const password = document.getElementById('a-pass').value;
-  const errEl = document.getElementById('a-err');
-  errEl.classList.add('hidden');
-  if(!nama || !email || password.length < 6){
-    errEl.textContent = 'Lengkapi nama, email, dan kata sandi (min. 6 karakter).';
-    errEl.classList.remove('hidden'); return;
-  }
-  const { data, error } = await sb.auth.signUp({ email, password, options:{ data:{ nama, nim } } });
-  if(error){ errEl.textContent = 'Gagal daftar: ' + error.message; errEl.classList.remove('hidden'); return; }
-  if(data.session){ await afterLogin(data.session); }
-  else { toast('Akun dibuat. Cek email untuk konfirmasi, lalu masuk.'); state.authMode='masuk'; renderLanding(); }
-}
-
-async function loadPublicData(){
-  const { data: profiles } = await sb.from('profiles').select('*').order('nama');
-  state.profiles = profiles || [];
-  const { data: mk } = await sb.from('mata_kuliah').select('*').order('nama_mk');
-  state.mataKuliah = mk || [];
-  const { data: tugas } = await sb.from('tugas').select('*').order('deadline');
-  state.tugas = tugas || [];
-  const { data: ta } = await sb.from('tugas_anggota').select('*');
-  state.tugasAnggota = ta || [];
+async function masukSebagai(profileId){
+  const p = state.profiles.find(x=>x.id===profileId);
+  if(!p) return;
+  state.profile = p;
+  state.guestMode = false;
+  await loadAll();
+  renderDashboard();
+  requestNotifPermission();
 }
 
 async function viewAsGuest(){
   if(!sb){ toast('Aplikasi belum terhubung ke database.'); return; }
   state.guestMode = true;
   state.profile = null;
-  await loadPublicData();
+  await loadAll();
   renderDashboard();
 }
 
 /* ================== DATA LOADING ================== */
-async function afterLogin(session){
-  state.session = session;
-  await loadAll();
-  renderDashboard();
-  requestNotifPermission();
-}
-
 async function loadAll(){
-  const uid = state.session.user.id;
-  const { data: profile } = await sb.from('profiles').select('*').eq('id', uid).single();
-  state.profile = profile;
   const { data: profiles } = await sb.from('profiles').select('*').order('nama');
   state.profiles = profiles || [];
   const { data: mk } = await sb.from('mata_kuliah').select('*').order('nama_mk');
@@ -424,7 +350,7 @@ function checkReminders(){
 /* ================== DASHBOARD ================== */
 function renderDashboard(){
   const app = document.getElementById('app');
-  const filtered = state.filter === 'Semua' ? state.tugas : state.tugas.filter(t=>t.jenis_tugas===state.filter);
+  const filtered = state.filter === 'Semua' ? state.tugas : state.tugas.filter(t=>t.kategori===state.filter);
   const p = state.profile;
 
   const topbarHtml = p ? `
@@ -455,7 +381,7 @@ function renderDashboard(){
     ${!state.guestMode ? `<button class="fab-btn" id="fab-add">+</button>` : ''}
   `;
   if(p){
-    document.getElementById('btn-logout').onclick = async ()=>{ await sb.auth.signOut(); state.session=null; state.profile=null; state.guestMode=false; renderLanding(); };
+    document.getElementById('btn-logout').onclick = ()=>{ state.profile=null; state.guestMode=false; renderLanding(); };
     document.getElementById('fab-add').onclick = openAddTaskSheet;
     const settingsBtn = document.getElementById('btn-settings');
     if(settingsBtn) settingsBtn.onclick = openSettingsSheet;
@@ -464,8 +390,8 @@ function renderDashboard(){
   }
 
   const chipsEl = document.getElementById('chips');
-  ['Semua', ...JENIS_TUGAS].forEach(j=>{
-    const count = j === 'Semua' ? state.tugas.length : state.tugas.filter(t=>t.jenis_tugas===j).length;
+  ['Semua', ...KATEGORI].forEach(j=>{
+    const count = j === 'Semua' ? state.tugas.length : state.tugas.filter(t=>t.kategori===j).length;
     const meta = chipMeta[j];
     const b = document.createElement('button');
     b.className = 'chip' + (state.filter===j ? ' active':'');
@@ -489,7 +415,7 @@ function renderDashboard(){
     const card = document.createElement('div');
     card.className = 'card' + (ds.cls==='dl-late' ? ' late':'');
     let membersHtml = '';
-    if(t.jenis_tugas === 'Tugas Kelompok'){
+    if(t.kategori === 'Kelompok'){
       const done = members.filter(m=>m.status==='selesai').length;
       const pct = members.length ? Math.round(done/members.length*100) : 0;
       membersHtml = `
@@ -500,8 +426,10 @@ function renderDashboard(){
         ${members.length ? `<div class="progress-bar"><div style="width:${pct}%;"></div></div>` : ''}
       `;
     }
+    const fm = formatMeta[t.jenis_tugas] || formatMeta['Lainnya'];
     card.innerHTML = `
-      <span class="badge ${badgeClass[t.jenis_tugas]}">${t.jenis_tugas}</span>${t.butuh_diskusi ? '<span class="discuss-flag">PERLU DISKUSI</span>' : ''}
+      <span class="badge" style="background:${chipMeta[t.kategori].bg}; color:${chipMeta[t.kategori].text};">${t.kategori}</span>
+      <span class="badge" style="background:${fm.bg}; color:${fm.text}; margin-left:5px;">${t.jenis_tugas}</span>${t.butuh_diskusi ? '<span class="discuss-flag">PERLU DISKUSI</span>' : ''}
       <p class="title">${t.judul_tugas}</p>
       <p class="mk">${mkName(t.mk_id)}</p>
       ${mkDosen(t.mk_id) ? `<p class="dosen">${mkDosen(t.mk_id)}</p>` : ''}
@@ -525,16 +453,29 @@ function openAddTaskSheet(){
     <div class="sheet">
       <div class="sheet-handle"></div>
       <h3>Tambah tugas baru</h3>
+      <div class="field"><label>Kategori</label>
+        <div class="type-badge-select">
+          <button type="button" class="type-opt active" id="f-kat-individu">Individu</button>
+          <button type="button" class="type-opt" id="f-kat-kelompok">Kelompok</button>
+        </div>
+      </div>
       <div class="field"><label>Mata kuliah</label>
         <select id="f-mk">${state.mataKuliah.map(m=>`<option value="${m.id}">${m.nama_mk}</option>`).join('')}</select>
       </div>
       <p class="hint" id="f-dosen-hint" style="text-align:left; margin-top:-6px;"></p>
       <div class="field"><label>Judul tugas</label><input id="f-judul" type="text" placeholder="Presentasi Bab 3" /></div>
-      <div class="field"><label>Jenis tugas</label>
+      <div class="field"><label>Format tugas</label>
         <select id="f-jenis">${JENIS_TUGAS.map(j=>`<option value="${j}">${j}</option>`).join('')}</select>
       </div>
       <div class="field"><label>Deskripsi tugas</label><textarea id="f-deskripsi" rows="3" placeholder="Instruksi dari dosen, format pengumpulan, dll."></textarea></div>
       <div class="field"><label>Deadline</label><input id="f-deadline" type="datetime-local" /></div>
+      <div id="f-anggota-section" class="hidden">
+        <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:5px; font-weight:500;">Anggota kelompok (opsional, bisa ditambah lagi nanti)</label>
+        <div class="field"><input id="f-nama-kelompok" type="text" placeholder="Nama kelompok, misal: Kelompok 3 (opsional)" /></div>
+        <div style="display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto; border:1px solid var(--line); border-radius:9px; padding:8px; margin-bottom:12px;">
+          ${state.profiles.map(p=>`<label style="display:flex; align-items:center; gap:8px; font-size:13px;"><input type="checkbox" class="f-member-check" value="${p.id}" style="width:auto;" /> ${p.nama}</label>`).join('')}
+        </div>
+      </div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:16px;">
         <input type="checkbox" id="f-diskusi" style="width:auto;" /> Tandai perlu didiskusikan bersama
       </label>
@@ -543,6 +484,12 @@ function openAddTaskSheet(){
     </div>
   `;
   document.body.appendChild(overlay);
+  let kategoriTerpilih = 'Individu';
+  const btnInd = document.getElementById('f-kat-individu');
+  const btnKel = document.getElementById('f-kat-kelompok');
+  const anggotaSection = document.getElementById('f-anggota-section');
+  btnInd.onclick = ()=>{ kategoriTerpilih='Individu'; btnInd.classList.add('active'); btnKel.classList.remove('active'); anggotaSection.classList.add('hidden'); };
+  btnKel.onclick = ()=>{ kategoriTerpilih='Kelompok'; btnKel.classList.add('active'); btnInd.classList.remove('active'); anggotaSection.classList.remove('hidden'); };
   const updateHint = ()=>{
     const mk = state.mataKuliah.find(m=>m.id===document.getElementById('f-mk').value);
     document.getElementById('f-dosen-hint').textContent = mk && mk.dosen ? 'Dosen: ' + mk.dosen : '';
@@ -556,6 +503,7 @@ function openAddTaskSheet(){
     const payload = {
       mk_id: document.getElementById('f-mk').value,
       judul_tugas: judul,
+      kategori: kategoriTerpilih,
       jenis_tugas: document.getElementById('f-jenis').value,
       deskripsi: document.getElementById('f-deskripsi').value.trim(),
       deadline: new Date(deadline).toISOString(),
@@ -563,8 +511,19 @@ function openAddTaskSheet(){
       dicatat_oleh: state.profile.id,
       updated_by: state.profile.id,
     };
-    const { error } = await sb.from('tugas').insert(payload);
+    const { data: inserted, error } = await sb.from('tugas').insert(payload).select().single();
     if(error){ toast('Gagal simpan: ' + error.message); return; }
+    if(kategoriTerpilih === 'Kelompok'){
+      const namaKelompok = document.getElementById('f-nama-kelompok').value.trim();
+      const checked = [...document.querySelectorAll('.f-member-check:checked')].map(c=>c.value);
+      if(checked.length > 0){
+        const rows = checked.map(pid => ({
+          tugas_id: inserted.id, profile_id: pid,
+          nama_kelompok: namaKelompok || null,
+        }));
+        await sb.from('tugas_anggota').insert(rows);
+      }
+    }
     overlay.remove();
     await loadAll(); renderDashboard();
     toast('Tugas ditambahkan.');
@@ -579,11 +538,17 @@ function openEditTaskSheet(t){
     <div class="sheet">
       <div class="sheet-handle"></div>
       <h3>Edit tugas</h3>
+      <div class="field"><label>Kategori</label>
+        <div class="type-badge-select">
+          <button type="button" class="type-opt ${t.kategori==='Individu'?'active':''}" id="ef-kat-individu">Individu</button>
+          <button type="button" class="type-opt ${t.kategori==='Kelompok'?'active':''}" id="ef-kat-kelompok">Kelompok</button>
+        </div>
+      </div>
       <div class="field"><label>Mata kuliah</label>
         <select id="ef-mk">${state.mataKuliah.map(m=>`<option value="${m.id}" ${m.id===t.mk_id?'selected':''}>${m.nama_mk}</option>`).join('')}</select>
       </div>
       <div class="field"><label>Judul tugas</label><input id="ef-judul" type="text" value="${(t.judul_tugas||'').replace(/"/g,'&quot;')}" /></div>
-      <div class="field"><label>Jenis tugas</label>
+      <div class="field"><label>Format tugas</label>
         <select id="ef-jenis">${JENIS_TUGAS.map(j=>`<option value="${j}" ${j===t.jenis_tugas?'selected':''}>${j}</option>`).join('')}</select>
       </div>
       <div class="field"><label>Deskripsi tugas</label><textarea id="ef-deskripsi" rows="3">${t.deskripsi||''}</textarea></div>
@@ -595,6 +560,11 @@ function openEditTaskSheet(t){
     </div>
   `;
   document.body.appendChild(overlay);
+  let ekategoriTerpilih = t.kategori;
+  const ebtnInd = document.getElementById('ef-kat-individu');
+  const ebtnKel = document.getElementById('ef-kat-kelompok');
+  ebtnInd.onclick = ()=>{ ekategoriTerpilih='Individu'; ebtnInd.classList.add('active'); ebtnKel.classList.remove('active'); };
+  ebtnKel.onclick = ()=>{ ekategoriTerpilih='Kelompok'; ebtnKel.classList.add('active'); ebtnInd.classList.remove('active'); };
   document.getElementById('ef-cancel').onclick = ()=> overlay.remove();
   document.getElementById('ef-save').onclick = async ()=>{
     const judul = document.getElementById('ef-judul').value.trim();
@@ -602,6 +572,7 @@ function openEditTaskSheet(t){
     const payload = {
       mk_id: document.getElementById('ef-mk').value,
       judul_tugas: judul,
+      kategori: ekategoriTerpilih,
       jenis_tugas: document.getElementById('ef-jenis').value,
       deskripsi: document.getElementById('ef-deskripsi').value.trim(),
       butuh_diskusi: document.getElementById('ef-diskusi').checked,
@@ -636,7 +607,7 @@ function openTaskDetail(tugasId){
       </label>
   ` : '';
 
-  const groupSection = t.jenis_tugas === 'Tugas Kelompok' ? (()=>{
+  const groupSection = t.kategori === 'Kelompok' ? (()=>{
     // kelompokkan anggota: yang punya nama_kelompok sama digabung jadi satu baris
     const solo = members.filter(m=>!m.nama_kelompok);
     const groupNames = [...new Set(members.filter(m=>m.nama_kelompok).map(m=>m.nama_kelompok))];
@@ -711,7 +682,8 @@ function openTaskDetail(tugasId){
   overlay.innerHTML = `
     <div class="sheet">
       <div class="sheet-handle"></div>
-      <span class="badge ${badgeClass[t.jenis_tugas]}">${t.jenis_tugas}</span>
+      <span class="badge" style="background:${chipMeta[t.kategori].bg}; color:${chipMeta[t.kategori].text};">${t.kategori}</span>
+      <span class="badge" style="background:${(formatMeta[t.jenis_tugas]||formatMeta['Lainnya']).bg}; color:${(formatMeta[t.jenis_tugas]||formatMeta['Lainnya']).text}; margin-left:5px;">${t.jenis_tugas}</span>
       <h3 style="margin-top:8px;">${t.judul_tugas}</h3>
       <p class="mk">${mkName(t.mk_id)}${mkDosen(t.mk_id) ? ' · ' + mkDosen(t.mk_id) : ''}</p>
       <p style="font-size:13px; color:var(--ink); line-height:1.5; margin:10px 0;">${t.deskripsi || '<span class="hint" style="text-align:left;">Belum ada deskripsi.</span>'}</p>
@@ -875,9 +847,7 @@ async function init(){
   }
   if(!sb){ renderLanding(); return; }
   await loadLogo();
-  const { data } = await sb.auth.getSession();
-  if(data.session){ await afterLogin(data.session); }
-  else { renderLanding(); }
+  renderLanding();
 }
 init();
 </script>
