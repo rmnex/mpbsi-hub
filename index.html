@@ -309,20 +309,27 @@ async function viewAsGuest(){
 }
 
 /* ================== DATA LOADING ================== */
-async function loadAll(){
-  const { data: profiles } = await sb.from('profiles').select('*').order('nama');
-  state.profiles = profiles || [];
-  const { data: mk } = await sb.from('mata_kuliah').select('*').order('nama_mk');
-  state.mataKuliah = mk || [];
-  const { data: tugas } = await sb.from('tugas').select('*').order('deadline');
-  state.tugas = tugas || [];
-  const { data: ta } = await sb.from('tugas_anggota').select('*');
-  state.tugasAnggota = ta || [];
+let realtimeSubscribed = false;
 
-  sb.channel('realtime-tugas')
-    .on('postgres_changes', { event:'*', schema:'public', table:'tugas' }, ()=>{ loadAll().then(renderDashboard); })
-    .on('postgres_changes', { event:'*', schema:'public', table:'tugas_anggota' }, ()=>{ loadAll().then(renderDashboard); })
-    .subscribe();
+async function loadAll(){
+  const [profilesRes, mkRes, tugasRes, taRes] = await Promise.all([
+    sb.from('profiles').select('*').order('nama'),
+    sb.from('mata_kuliah').select('*').order('nama_mk'),
+    sb.from('tugas').select('*').order('deadline'),
+    sb.from('tugas_anggota').select('*'),
+  ]);
+  state.profiles = profilesRes.data || [];
+  state.mataKuliah = mkRes.data || [];
+  state.tugas = tugasRes.data || [];
+  state.tugasAnggota = taRes.data || [];
+
+  if(!realtimeSubscribed){
+    realtimeSubscribed = true;
+    sb.channel('realtime-tugas')
+      .on('postgres_changes', { event:'*', schema:'public', table:'tugas' }, ()=>{ loadAll().then(renderDashboard); })
+      .on('postgres_changes', { event:'*', schema:'public', table:'tugas_anggota' }, ()=>{ loadAll().then(renderDashboard); })
+      .subscribe();
+  }
 }
 
 function profileName(id){ const p = state.profiles.find(p=>p.id===id); return p ? p.nama : '—'; }
