@@ -169,6 +169,8 @@ let state = {
   authMode: 'masuk', // masuk | daftar
   logoUrl: null,
   guestMode: false,
+  simpleLogin: true,
+  publicProfiles: [],
 };
 
 const JENIS_TUGAS = ['Presentasi/PPT','Makalah/Paper','Tugas Kelompok','Tugas Individu','Resume/Catatan Kuliah','Ujian/Kuis','Diskusi/Forum','Lainnya'];
@@ -267,10 +269,38 @@ function renderLanding(){
   renderAuthForm();
 }
 
-function renderAuthForm(){
+async function renderAuthForm(){
   const el = document.getElementById('auth-form');
   if(!sb){
     el.innerHTML = `<p class="err-msg" style="text-align:center;">Aplikasi belum terhubung ke database. Lihat PANDUAN.md untuk mengisi konfigurasi Supabase.</p>`;
+    return;
+  }
+  if(state.authMode === 'masuk' && state.simpleLogin){
+    if(state.publicProfiles.length === 0){
+      const { data } = await sb.from('profiles').select('nama, nim').not('nim','is',null).order('nama');
+      state.publicProfiles = data || [];
+    }
+    el.innerHTML = `
+      <div class="field"><label>Pilih nama Anda</label>
+        <select id="a-nama-pilih">
+          <option value="">-- pilih nama --</option>
+          ${state.publicProfiles.map(p=>`<option value="${p.nim}">${p.nama}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary" id="btn-masuk-simple">Masuk</button>
+      <p id="a-err" class="err-msg hidden"></p>
+      <p class="hint"><a href="#" id="link-manual">Login pakai email pribadi (untuk ketua/akun khusus)</a></p>
+    `;
+    document.getElementById('btn-masuk-simple').onclick = async ()=>{
+      const nim = document.getElementById('a-nama-pilih').value;
+      const errEl = document.getElementById('a-err');
+      errEl.classList.add('hidden');
+      if(!nim){ errEl.textContent = 'Pilih nama terlebih dahulu.'; errEl.classList.remove('hidden'); return; }
+      const { data, error } = await sb.auth.signInWithPassword({ email: nim + '@mpbsihub.com', password: 'Mpbsi2026!' });
+      if(error){ errEl.textContent = 'Gagal masuk otomatis (mungkin kata sandi sudah diganti). Coba "Login pakai email pribadi".'; errEl.classList.remove('hidden'); return; }
+      await afterLogin(data.session);
+    };
+    document.getElementById('link-manual').onclick = (e)=>{ e.preventDefault(); state.simpleLogin=false; renderAuthForm(); };
     return;
   }
   if(state.authMode === 'masuk'){
@@ -279,8 +309,10 @@ function renderAuthForm(){
       <div class="field"><label>Kata sandi</label><input id="a-pass" type="password" placeholder="••••••••" /></div>
       <button class="btn btn-primary" id="btn-masuk">Masuk ke akun</button>
       <p id="a-err" class="err-msg hidden"></p>
+      <p class="hint"><a href="#" id="link-simple">Kembali ke pilih nama</a></p>
     `;
     document.getElementById('btn-masuk').onclick = doLogin;
+    document.getElementById('link-simple').onclick = (e)=>{ e.preventDefault(); state.simpleLogin=true; renderAuthForm(); };
   } else {
     el.innerHTML = `
       <div class="field"><label>Nama lengkap</label><input id="a-nama" type="text" placeholder="Nama sesuai roster kelas" /></div>
