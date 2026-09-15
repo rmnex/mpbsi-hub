@@ -76,10 +76,15 @@
   .content{padding:4px 20px 90px; flex:1;}
 
   .chips{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; margin-bottom:16px;}
-  .chip{display:flex; flex-direction:column; align-items:flex-start; gap:2px; font-size:11.5px; padding:8px 10px; border-radius:10px; border:1px solid var(--line); background:#fff; color:var(--muted); font-weight:500; text-align:left;}
-  .chip b{font-size:16px; color:var(--ink); font-weight:700;}
-  .chip.active{background:var(--green-600); border-color:var(--green-600);}
-  .chip.active, .chip.active b{color:#fff;}
+  .chip{display:flex; align-items:center; gap:8px; font-size:11.5px; padding:9px 10px; border-radius:12px; border:1px solid transparent; font-weight:500; text-align:left; background:var(--chip-bg); color:var(--chip-text);}
+  .chip .chip-ic{width:26px; height:26px; border-radius:8px; background:var(--chip-icbg); color:var(--chip-text); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .chip .chip-ic svg{width:15px; height:15px;}
+  .chip-text-wrap{display:flex; flex-direction:column; line-height:1.25; overflow:hidden;}
+  .chip b{font-size:14px; font-weight:700;}
+  .chip span{font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .chip.active{background:var(--chip-solid); border-color:var(--chip-solid);}
+  .chip.active, .chip.active b, .chip.active span{color:#fff;}
+  .chip.active .chip-ic{background:rgba(255,255,255,0.22); color:#fff;}
 
   .empty{text-align:center; padding:50px 20px; color:var(--muted);}
   .empty .ic{font-size:32px; margin-bottom:10px;}
@@ -168,6 +173,30 @@ let state = {
 
 const JENIS_TUGAS = ['Presentasi/PPT','Makalah/Paper','Tugas Kelompok','Tugas Individu','Resume/Catatan Kuliah','Ujian/Kuis','Diskusi/Forum','Lainnya'];
 const badgeClass = { 'Presentasi/PPT':'b-presentasi','Makalah/Paper':'b-makalah','Tugas Kelompok':'b-kelompok','Tugas Individu':'b-individu','Resume/Catatan Kuliah':'b-lain','Ujian/Kuis':'b-presentasi','Diskusi/Forum':'b-lain','Lainnya':'b-lain' };
+
+const ICONS = {
+  semua: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  presentasi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8"/></svg>',
+  makalah: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></svg>',
+  kelompok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="8" r="2.6"/><path d="M17 5.2c1.5.3 2.6 1.4 2.6 3.3"/></svg>',
+  individu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"/></svg>',
+  resume: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+  ujian: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="17" rx="2"/></svg>',
+  diskusi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 1 1-3.4-6.5"/><path d="M21 4v5h-5"/></svg>',
+  lainnya: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
+};
+
+const chipMeta = {
+  'Semua':               { icon: ICONS.semua,      bg:'#EDEEF0', icbg:'#DCDEE2', text:'#3A3D42', solid:'#3A3D42' },
+  'Presentasi/PPT':      { icon: ICONS.presentasi,  bg:'#FAECE7', icbg:'#F0997B', text:'#993C1D', solid:'#D85A30' },
+  'Makalah/Paper':       { icon: ICONS.makalah,     bg:'#E1F5EE', icbg:'#5DCAA5', text:'#085041', solid:'#0F9E75' },
+  'Tugas Kelompok':      { icon: ICONS.kelompok,    bg:'#FCF2DC', icbg:'#FAC775', text:'#854F0B', solid:'#BA7517' },
+  'Tugas Individu':      { icon: ICONS.individu,    bg:'#EEEDFE', icbg:'#AFA9EC', text:'#3C3489', solid:'#534AB7' },
+  'Resume/Catatan Kuliah': { icon: ICONS.resume,    bg:'#E6F1FB', icbg:'#85B7EB', text:'#0C447C', solid:'#185FA5' },
+  'Ujian/Kuis':          { icon: ICONS.ujian,       bg:'#FCEBEB', icbg:'#F09595', text:'#791F1F', solid:'#A32D2D' },
+  'Diskusi/Forum':       { icon: ICONS.diskusi,     bg:'#FBEAF0', icbg:'#ED93B1', text:'#72243E', solid:'#993556' },
+  'Lainnya':             { icon: ICONS.lainnya,     bg:'#F1EFE8', icbg:'#B4B2A9', text:'#444441', solid:'#5F5E5A' },
+};
 const avatarColors = ['#0F6E56','#3C3489','#993C1D','#993556','#185FA5','#854F0B'];
 
 function initials(nama){
@@ -405,9 +434,14 @@ function renderDashboard(){
   const chipsEl = document.getElementById('chips');
   ['Semua', ...JENIS_TUGAS].forEach(j=>{
     const count = j === 'Semua' ? state.tugas.length : state.tugas.filter(t=>t.jenis_tugas===j).length;
+    const meta = chipMeta[j];
     const b = document.createElement('button');
     b.className = 'chip' + (state.filter===j ? ' active':'');
-    b.innerHTML = `<b>${count}</b><span>${j}</span>`;
+    b.style.setProperty('--chip-bg', meta.bg);
+    b.style.setProperty('--chip-icbg', meta.icbg);
+    b.style.setProperty('--chip-text', meta.text);
+    b.style.setProperty('--chip-solid', meta.solid);
+    b.innerHTML = `<div class="chip-ic">${meta.icon}</div><div class="chip-text-wrap"><b>${count}</b><span>${j}</span></div>`;
     b.onclick = ()=>{ state.filter = j; renderDashboard(); };
     chipsEl.appendChild(b);
   });
