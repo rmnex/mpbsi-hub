@@ -163,6 +163,7 @@ let state = {
   filter: 'Semua',
   authMode: 'masuk', // masuk | daftar
   logoUrl: null,
+  guestMode: false,
 };
 
 const JENIS_TUGAS = ['Presentasi/PPT','Makalah/Paper','Tugas Kelompok','Tugas Individu','Resume/Catatan Kuliah','Ujian/Kuis','Diskusi/Forum','Lainnya'];
@@ -222,6 +223,7 @@ function renderLanding(){
         <button id="tab-daftar" class="${state.authMode==='daftar'?'active':''}">Daftar</button>
       </div>
       <div id="auth-form"></div>
+      <button class="btn btn-ghost" id="btn-guest" style="margin-top:10px;">Lihat tugas tanpa login</button>
     </div>
 
     <div class="features">
@@ -232,6 +234,7 @@ function renderLanding(){
   `;
   document.getElementById('tab-masuk').onclick = ()=>{ state.authMode='masuk'; renderLanding(); };
   document.getElementById('tab-daftar').onclick = ()=>{ state.authMode='daftar'; renderLanding(); };
+  document.getElementById('btn-guest').onclick = viewAsGuest;
   renderAuthForm();
 }
 
@@ -289,6 +292,25 @@ async function doRegister(){
   else { toast('Akun dibuat. Cek email untuk konfirmasi, lalu masuk.'); state.authMode='masuk'; renderLanding(); }
 }
 
+async function loadPublicData(){
+  const { data: profiles } = await sb.from('profiles').select('*').order('nama');
+  state.profiles = profiles || [];
+  const { data: mk } = await sb.from('mata_kuliah').select('*').order('nama_mk');
+  state.mataKuliah = mk || [];
+  const { data: tugas } = await sb.from('tugas').select('*').order('deadline');
+  state.tugas = tugas || [];
+  const { data: ta } = await sb.from('tugas_anggota').select('*');
+  state.tugasAnggota = ta || [];
+}
+
+async function viewAsGuest(){
+  if(!sb){ toast('Aplikasi belum terhubung ke database.'); return; }
+  state.guestMode = true;
+  state.profile = null;
+  await loadPublicData();
+  renderDashboard();
+}
+
 /* ================== DATA LOADING ================== */
 async function afterLogin(session){
   state.session = session;
@@ -344,8 +366,7 @@ function renderDashboard(){
   const filtered = state.filter === 'Semua' ? state.tugas : state.tugas.filter(t=>t.jenis_tugas===state.filter);
   const p = state.profile;
 
-  app.innerHTML = `
-    <div class="topbar">
+  const topbarHtml = p ? `
       <div class="who">
         <div class="avatar" style="background:${colorFor(p.id)}22; color:${colorFor(p.id)};">${initials(p.nama)}</div>
         <div><p class="name">${p.nama}</p><p class="role">${p.role}</p></div>
@@ -354,17 +375,32 @@ function renderDashboard(){
         ${isPengurus() ? `<button class="icon-btn" id="btn-settings">&#9881;</button>` : ''}
         <button class="icon-btn" id="btn-logout">&#8594;</button>
       </div>
+  ` : `
+      <div class="who">
+        <div class="avatar" style="background:var(--line); color:var(--muted);">?</div>
+        <div><p class="name">Mode tamu</p><p class="role">hanya lihat</p></div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="btn-login-from-guest">Masuk</button>
+  `;
+
+  app.innerHTML = `
+    <div class="topbar">
+      ${topbarHtml}
     </div>
     <div class="content">
       <div class="chips" id="chips"></div>
       <div id="task-list"></div>
     </div>
-    <button class="fab-btn" id="fab-add">+</button>
+    ${!state.guestMode ? `<button class="fab-btn" id="fab-add">+</button>` : ''}
   `;
-  document.getElementById('btn-logout').onclick = async ()=>{ await sb.auth.signOut(); state.session=null; state.profile=null; renderLanding(); };
-  document.getElementById('fab-add').onclick = openAddTaskSheet;
-  const settingsBtn = document.getElementById('btn-settings');
-  if(settingsBtn) settingsBtn.onclick = openSettingsSheet;
+  if(p){
+    document.getElementById('btn-logout').onclick = async ()=>{ await sb.auth.signOut(); state.session=null; state.profile=null; state.guestMode=false; renderLanding(); };
+    document.getElementById('fab-add').onclick = openAddTaskSheet;
+    const settingsBtn = document.getElementById('btn-settings');
+    if(settingsBtn) settingsBtn.onclick = openSettingsSheet;
+  } else {
+    document.getElementById('btn-login-from-guest').onclick = ()=>{ state.guestMode=false; renderLanding(); };
+  }
 
   const chipsEl = document.getElementById('chips');
   ['Semua', ...JENIS_TUGAS].forEach(j=>{
@@ -474,11 +510,11 @@ function openTaskDetail(tugasId){
   const t = state.tugas.find(x=>x.id===tugasId);
   if(!t) return;
   const members = state.tugasAnggota.filter(a=>a.tugas_id===t.id);
-  const myRow = members.find(m=>m.profile_id===state.profile.id);
+  const myRow = state.profile ? members.find(m=>m.profile_id===state.profile.id) : null;
   const overlay = document.createElement('div');
   overlay.className = 'sheet-overlay';
 
-  const pengurusControls = isPengurus() ? `
+  const pengurusControls = (state.profile && isPengurus()) ? `
       <div class="field"><label>Ubah deadline</label><input id="d-deadline" type="datetime-local" value="${new Date(t.deadline).toISOString().slice(0,16)}" /></div>
       <button class="btn btn-ghost" id="d-save-deadline" style="margin-bottom:14px;">Simpan deadline baru</button>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:14px;">
@@ -493,7 +529,7 @@ function openTaskDetail(tugasId){
         <div class="topic-row">
           <div class="l"><span class="status-dot sd-${m.status.replace(' ','')==='belummulai'?'belum':m.status}"></span>
           <div><b style="font-size:12.5px;">${profileName(m.profile_id)}</b><br/><span style="font-size:11.5px; color:var(--muted);">${m.topik_bagian || 'Belum isi topik'}</span></div></div>
-          ${m.profile_id===state.profile.id || isPengurus() ? `<select data-id="${m.id}" class="d-status-select" style="width:auto; padding:5px 8px; font-size:11.5px;">
+          ${m.profile_id===state.profile?.id || (state.profile && isPengurus()) ? `<select data-id="${m.id}" class="d-status-select" style="width:auto; padding:5px 8px; font-size:11.5px;">
             <option value="belum mulai" ${m.status==='belum mulai'?'selected':''}>Belum mulai</option>
             <option value="proses" ${m.status==='proses'?'selected':''}>Proses</option>
             <option value="selesai" ${m.status==='selesai'?'selected':''}>Selesai</option>
@@ -501,7 +537,7 @@ function openTaskDetail(tugasId){
         </div>
       `).join('') || '<p class="hint">Belum ada anggota yang gabung.</p>'}
     </div>
-    ${!myRow ? `
+    ${(state.profile && !myRow) ? `
       <div class="field"><label>Topik/bagian Anda</label><input id="d-topik" type="text" placeholder="Misal: Bab 2 - Kajian Teori" /></div>
       <button class="btn btn-primary" id="d-join" style="margin-bottom:14px;">Tambah diri saya</button>
     ` : ''}
