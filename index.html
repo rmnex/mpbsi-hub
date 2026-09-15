@@ -539,6 +539,50 @@ function openAddTaskSheet(){
   };
 }
 
+/* ================== SHEET: EDIT TUGAS ================== */
+function openEditTaskSheet(t){
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  overlay.innerHTML = `
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Edit tugas</h3>
+      <div class="field"><label>Mata kuliah</label>
+        <select id="ef-mk">${state.mataKuliah.map(m=>`<option value="${m.id}" ${m.id===t.mk_id?'selected':''}>${m.nama_mk}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Judul tugas</label><input id="ef-judul" type="text" value="${(t.judul_tugas||'').replace(/"/g,'&quot;')}" /></div>
+      <div class="field"><label>Jenis tugas</label>
+        <select id="ef-jenis">${JENIS_TUGAS.map(j=>`<option value="${j}" ${j===t.jenis_tugas?'selected':''}>${j}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Deskripsi tugas</label><textarea id="ef-deskripsi" rows="3">${t.deskripsi||''}</textarea></div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:16px;">
+        <input type="checkbox" id="ef-diskusi" ${t.butuh_diskusi?'checked':''} style="width:auto;" /> Tandai perlu didiskusikan bersama
+      </label>
+      <button class="btn btn-primary" id="ef-save">Simpan perubahan</button>
+      <button class="btn btn-ghost" id="ef-cancel" style="margin-top:8px;">Batal</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('ef-cancel').onclick = ()=> overlay.remove();
+  document.getElementById('ef-save').onclick = async ()=>{
+    const judul = document.getElementById('ef-judul').value.trim();
+    if(!judul){ toast('Judul tidak boleh kosong.'); return; }
+    const payload = {
+      mk_id: document.getElementById('ef-mk').value,
+      judul_tugas: judul,
+      jenis_tugas: document.getElementById('ef-jenis').value,
+      deskripsi: document.getElementById('ef-deskripsi').value.trim(),
+      butuh_diskusi: document.getElementById('ef-diskusi').checked,
+      updated_by: state.profile.id,
+    };
+    const { error } = await sb.from('tugas').update(payload).eq('id', t.id);
+    if(error){ toast('Gagal simpan: ' + error.message); return; }
+    overlay.remove();
+    await loadAll(); renderDashboard();
+    toast('Tugas diperbarui.');
+  };
+}
+
 /* ================== DETAIL TUGAS ================== */
 function openTaskDetail(tugasId){
   const t = state.tugas.find(x=>x.id===tugasId);
@@ -549,6 +593,10 @@ function openTaskDetail(tugasId){
   overlay.className = 'sheet-overlay';
 
   const pengurusControls = (state.profile && isPengurus()) ? `
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        <button class="btn btn-ghost btn-sm" id="d-edit" style="flex:1;">Edit tugas</button>
+        <button class="btn btn-ghost btn-sm" id="d-delete" style="flex:1; color:var(--danger); border-color:#EAB2B6;">Hapus tugas</button>
+      </div>
       <div class="field"><label>Ubah deadline</label><input id="d-deadline" type="datetime-local" value="${new Date(t.deadline).toISOString().slice(0,16)}" /></div>
       <button class="btn btn-ghost" id="d-save-deadline" style="margin-bottom:14px;">Simpan deadline baru</button>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:14px;">
@@ -600,6 +648,13 @@ function openTaskDetail(tugasId){
   document.getElementById('d-close').onclick = ()=> overlay.remove();
 
   if(isPengurus()){
+    document.getElementById('d-edit').onclick = ()=>{ overlay.remove(); openEditTaskSheet(t); };
+    document.getElementById('d-delete').onclick = async ()=>{
+      if(!confirm('Yakin hapus tugas "' + t.judul_tugas + '"? Tindakan ini tidak bisa dibatalkan.')) return;
+      const { error } = await sb.from('tugas').delete().eq('id', t.id);
+      if(error) return toast('Gagal hapus: ' + error.message);
+      overlay.remove(); toast('Tugas dihapus.'); await loadAll(); renderDashboard();
+    };
     document.getElementById('d-save-deadline').onclick = async ()=>{
       const val = document.getElementById('d-deadline').value;
       const { error } = await sb.from('tugas').update({ deadline: new Date(val).toISOString(), updated_by: state.profile.id }).eq('id', t.id);
