@@ -233,6 +233,23 @@ function deadlineStatus(deadline, selesai){
   if(days <= 3) return {label:`Deadline ${fmtDate(deadline)}`, cls:'dl-soon'};
   return {label:`Deadline ${fmtDate(deadline)}`, cls:'dl-ok'};
 }
+function isGiliranTask(t){
+  return t.kategori === 'Kelompok' || (t.kategori === 'Individu' && t.lacak_progres && t.butuh_giliran);
+}
+function efektifDeadlineInfo(t, semuaAnggota){
+  if(!isGiliranTask(t)) return { tanggal: t.deadline, siapa: null };
+  const anggotaTugas = semuaAnggota.filter(m=>m.tugas_id===t.id);
+  const belumSelesaiPunyaTanggal = anggotaTugas.filter(m=>m.tanggal_giliran && m.status!=='selesai');
+  if(belumSelesaiPunyaTanggal.length === 0) return { tanggal: t.deadline, siapa: null };
+  const earliest = belumSelesaiPunyaTanggal.reduce((min,m)=> new Date(m.tanggal_giliran) < new Date(min.tanggal_giliran) ? m : min);
+  const siapa = earliest.nama_kelompok ? ('Kelompok ' + earliest.nama_kelompok) : profileName(earliest.profile_id);
+  return { tanggal: earliest.tanggal_giliran, siapa };
+}
+function efektifDeadlineStatus(t, semuaAnggota){
+  const info = efektifDeadlineInfo(t, semuaAnggota);
+  const viaGiliran = isGiliranTask(t) && info.siapa !== null;
+  return { ...deadlineStatus(info.tanggal, viaGiliran ? false : t.selesai), viaGiliran, siapa: info.siapa };
+}
 function isPengurus(){
   return state.profile && ['ketua','sekretaris'].includes(state.profile.role);
 }
@@ -393,10 +410,13 @@ async function subscribePush(){
 function checkReminders(){
   if(!('Notification' in window) || Notification.permission !== 'granted') return;
   const now = new Date();
+  const maxHari = state.reminderDays && state.reminderDays.length ? Math.max(...state.reminderDays) : 3;
   state.tugas.filter(t=>!t.selesai).forEach(t=>{
-    const days = (new Date(t.deadline) - now) / (1000*60*60*24);
-    if(days > 0 && days <= 3){
-      new Notification('Deadline mendekat: ' + t.judul_tugas, { body: 'Batas waktu ' + fmtDate(t.deadline) });
+    const info = efektifDeadlineInfo(t, state.tugasAnggota);
+    const days = (new Date(info.tanggal) - now) / (1000*60*60*24);
+    if(days > 0 && days <= maxHari){
+      const judulNotif = info.siapa ? `${t.judul_tugas} (${info.siapa})` : t.judul_tugas;
+      new Notification('Deadline mendekat: ' + judulNotif, { body: 'Batas waktu ' + fmtDate(info.tanggal) });
     }
   });
 }
@@ -501,7 +521,7 @@ function renderDashboard(){
     return;
   }
   filtered.forEach(t=>{
-    const ds = deadlineStatus(t.deadline, t.selesai);
+    const ds = efektifDeadlineStatus(t, state.tugasAnggota);
     const members = state.tugasAnggota.filter(a=>a.tugas_id===t.id);
     const card = document.createElement('div');
     card.className = 'card' + (ds.cls==='dl-late' ? ' late':'');
@@ -538,7 +558,7 @@ function renderDashboard(){
       ${mkDosen(t.mk_id) ? `<p class="dosen">${mkDosen(t.mk_id)}</p>` : ''}
       ${membersHtml}
       <div class="row-bottom">
-        <span class="deadline-tag ${ds.cls}">${ds.label}</span>
+        <span class="deadline-tag ${ds.cls}">${ds.label}${ds.siapa ? ' · ' + ds.siapa : ''}</span>
         <span class="who-tag">dicatat: ${profileName(t.dicatat_oleh).split(' ')[0]}</span>
       </div>
     `;
@@ -763,6 +783,7 @@ function openTaskDetail(tugasId){
   if(!t) return;
   const members = state.tugasAnggota.filter(a=>a.tugas_id===t.id);
   const myRow = state.profile ? members.find(m=>m.profile_id===state.profile.id) : null;
+  const eds = efektifDeadlineStatus(t, state.tugasAnggota);
   const overlay = document.createElement('div');
   overlay.className = 'sheet-overlay';
 
@@ -799,16 +820,18 @@ function openTaskDetail(tugasId){
     return `
     <p style="font-size:13px; font-weight:600; margin:16px 0 8px;">Anggota &amp; giliran ${t.kategori==='Individu' ? '(presentasi bergilir)' : ''}</p>
     <div class="task-detail-topics" id="d-topics">
-      ${allRows.map((r,i)=>`
+      ${allRows.map((r,i)=>{
+        const rowDl = r.tanggal_giliran ? deadlineStatus(r.tanggal_giliran, r.status==='selesai') : null;
+        return `
         <div class="topic-row">
           <label class="l" style="cursor:${state.profile ? 'pointer':'default'};">
             <input type="checkbox" class="row-ceklis" data-ids="${r.ids.join(',')}" ${r.status==='selesai'?'checked':''} ${state.profile ? '' : 'disabled'} style="width:16px; height:16px;" />
             <div><b style="font-size:12.5px;">${r.isGroup ? ('Kelompok: ' + r.nama_kelompok) : profileName(r.profile_id)}</b><br/>
             ${r.isGroup ? `<span style="font-size:11px; color:var(--muted);">${r.anggota.map(a=>profileName(a.profile_id)).join(', ')}</span><br/>` : ''}
-            <span style="font-size:11.5px; color:var(--muted);">${r.topik_bagian || 'Belum isi topik'}${r.tanggal_giliran ? ' · ' + fmtDate(r.tanggal_giliran) : ''}</span></div>
+            <span style="font-size:11.5px; color:var(--muted);">${r.topik_bagian || 'Belum isi topik'}</span>${r.tanggal_giliran ? `<br/><span class="deadline-tag ${rowDl.cls}" style="font-size:11px;">${rowDl.label}</span>` : ''}</div>
           </label>
         </div>
-      `).join('') || '<p class="hint">Belum ada anggota yang gabung.</p>'}
+      `;}).join('') || '<p class="hint">Belum ada anggota yang gabung.</p>'}
     </div>
     ${(state.profile && !myRow) ? `
       <div class="field"><label>Topik/bagian Anda</label><input id="d-topik" type="text" placeholder="Misal: Bab 2 - Kajian Teori" /></div>
@@ -890,7 +913,8 @@ function openTaskDetail(tugasId){
       <h3 style="margin-top:8px;">${t.judul_tugas}</h3>
       <p class="mk">${mkName(t.mk_id)}${mkDosen(t.mk_id) ? ' · ' + mkDosen(t.mk_id) : ''}</p>
       <p style="font-size:13px; color:var(--ink); line-height:1.5; margin:10px 0;">${t.deskripsi || '<span class="hint" style="text-align:left;">Belum ada deskripsi.</span>'}</p>
-      <p class="deadline-tag ${deadlineStatus(t.deadline,t.selesai).cls}">${deadlineStatus(t.deadline,t.selesai).label}</p>
+      <p class="deadline-tag ${eds.cls}">${eds.label}${eds.siapa ? ' — ' + eds.siapa : ''}</p>
+      ${eds.viaGiliran ? `<p class="hint" style="text-align:left; margin:2px 0 0;">Status ini mengikuti giliran yang belum ditandai selesai, bukan status keseluruhan tugas.</p>` : ''}
       ${pengurusControls}
       ${groupSection}
       ${wajibSemuaSection}
